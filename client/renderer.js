@@ -130,42 +130,118 @@
   // Nominal cog size; everything around a cog is measured as a multiple of it
   // so the whole seat block scales as one unit.
   var SEAT_BASE = 84;
-  var NOTE_LINES = 3, NOTE_LINE_H = 12, NOTE_PAD = 6;
-  var SAY_LINES = 2, SAY_LINE_H = 12, SAY_PAD = 5;
+  var NOTE_PAD = 6, SAY_PAD = 5;
 
-  function noteHeight(scale, lines) {
-    return ((lines || NOTE_LINES) * NOTE_LINE_H + NOTE_PAD * 2 - 2) * scale;
+  // The two strings on the felt that the MODEL writes: the speech plate holds
+  // `say` and the parchment holds `notes`. The server caps both — sim.nim:27-28
+  // (`MaxSayLen = 140`, `MaxNotesLen = 400`), enforced by `cleanSay`/`cleanNotes`
+  // — and the bands below are sized FROM THOSE CAPS, measured in the face they
+  // are drawn in, so a full-cap remark is laid out whole. An ellipsis on a
+  // sentence means the box was too small: widen the band, never shorten the
+  // text (acceptance checklist 15). The bands are reserved whether or not a
+  // seat is talking, so the table does not jump when a remark lands.
+  var MAX_SAY_LEN = 140;
+  var MAX_NOTES_LEN = 400;
+  // Per-character advance is measured on a CAPITALS-and-digits reference: that
+  // is the widest run of glyphs a model can actually send, so a seat that
+  // SHOUTS gets the same room as one that whispers. WRAP_FILL is the packing
+  // loss of a greedy word wrap (the ragged right edge). LINE_SPACING turns the
+  // font size actually used into a line box, so the floors below can never put
+  // 11 px text into a 9 px line.
+  var ADVANCE_REF = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  var WRAP_FILL = 0.92;
+  var LINE_SPACING = 1.22;
+  var BAND_FONT_FLOOR = 9;
+
+  // measureText on the real face, cached per font string. The cache is dropped
+  // once the webfont finishes loading: before that, canvas measurements come
+  // from the fallback face and would size every band wrong for the whole
+  // session.
+  var advanceCache = {};
+  if (typeof document !== "undefined" && document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () { advanceCache = {}; });
   }
 
-  function sayHeight(scale) {
-    return (SAY_LINES * SAY_LINE_H + SAY_PAD * 2) * scale;
+  function advance(ctx) {
+    var key = ctx.font;
+    if (advanceCache[key] === undefined) {
+      advanceCache[key] = ctx.measureText(ADVANCE_REF).width /
+        ADVANCE_REF.length;
+    }
+    return advanceCache[key];
+  }
+
+  // Lines a band must reserve to hold `cap` characters at `usableWidth`, in
+  // whatever font `ctx` currently carries.
+  function capLines(ctx, usableWidth, cap) {
+    var perLine = Math.max(4,
+      Math.floor(usableWidth / advance(ctx) * WRAP_FILL));
+    return Math.max(1, Math.ceil(cap / perLine));
+  }
+
+  function bandFont(scale) {
+    return Math.max(BAND_FONT_FLOOR, Math.round(10.5 * scale));
   }
 
   // ---- Liar's Dice stage ---------------------------------------------------
 
-  function seatBlock(size, handSize, compact) {
+  function seatBlock(ctx, size, handSize, width, height) {
     // The seat block: a reserved speech band, the cog, its hand, the alias
     // and points line, then the notes parchment. The speech band and the
     // parchment are reserved even while a seat is silent and note-less — both
     // arrive without warning, and a plate laid out with no room reserved gets
     // drawn off-frame (cogchemists, 2026-08-24).
     var scale = size / SEAT_BASE;
-    var noteLines = compact ? 1 : NOTE_LINES;
     var die = Math.max(11, size * 0.34);
     var handW = handSize * (die + 4 * scale) + 8 * scale;
+    // The block is as wide as the room the seat has: a wider band is a
+    // shorter band, and widening is what the checklist asks for when a
+    // full-cap string does not fit. Two seats share a row at the widest
+    // point of the ring (and of the compact grid), hence width / 2.
+    var w = Math.max(size * 1.9, handW,
+      Math.min(width / 2 - 16, size * 5.5));
+    var font = bandFont(scale);
+    var lineH = Math.round(font * LINE_SPACING);
+    var pad = Math.max(3, Math.round(NOTE_PAD * scale));
+    var sayPad = Math.max(3, Math.round(SAY_PAD * scale));
+    ctx.save();
+    ctx.font = font + "px " + BODY_FONT;
+    var sayLines = capLines(ctx, w - sayPad * 2, MAX_SAY_LEN);
+    var noteLines = capLines(ctx, w - pad * 2, MAX_NOTES_LEN);
+    ctx.restore();
+    var fixedAbove = size * 0.62;
+    var fixedBelow = size * 0.5 + 6 * scale + die + 8 * scale + 34 * scale;
+    // A frame too short to hold both full bands: hand back note lines, then
+    // say lines, rather than drawing off the bottom edge. Only reachable well
+    // below the sizes the viewer runs at — the renderer fixture covers
+    // 360x640 upward and never trims.
+    var room = height - 12 - fixedAbove - fixedBelow;
+    var height2 = function () {
+      return sayLines * lineH + sayPad * 2 + noteLines * lineH + pad * 2;
+    };
+    while (noteLines > 1 && height2() > room) noteLines -= 1;
+    while (sayLines > 1 && height2() > room) sayLines -= 1;
+    var sayH = sayLines * lineH + sayPad * 2;
+    var noteH = noteLines * lineH + pad * 2;
     return {
       scale: scale,
       die: die,
       handH: die + 8 * scale,
+      font: font,
+      lineH: lineH,
+      pad: pad,
+      sayPad: sayPad,
+      sayLines: sayLines,
       noteLines: noteLines,
-      w: Math.max(size * 1.9, handW),
-      above: size * 0.62 + sayHeight(scale),
-      below: size * 0.5 + 6 * scale + die + 8 * scale + 34 * scale +
-        noteHeight(scale, noteLines)
+      sayH: sayH,
+      noteH: noteH,
+      w: w,
+      above: fixedAbove + sayH,
+      below: fixedBelow + noteH
     };
   }
 
-  function computeLayout(width, height, count, handSize) {
+  function computeLayout(ctx, width, height, count, handSize) {
     // Solved per frame: callers embed this viewer at wildly different sizes,
     // and the whole table must always fit the frame (it is a FIXED arena —
     // there is no zoom and no minimap).
@@ -173,7 +249,7 @@
     var size = Math.min(SEAT_BASE, width / 9, height / 6);
     var layout = null;
     for (var attempt = 0; attempt < 40; attempt++) {
-      var block = seatBlock(size, handSize, compact);
+      var block = seatBlock(ctx, size, handSize, width, height);
       var margin = 6;
       var cy = (height + block.above - block.below) / 2;
       var ry = Math.min(cy - margin - block.above,
@@ -249,7 +325,8 @@
     var now = view.now || Date.now();
     var handSize = view.handSize || (seats[0] && seats[0].hand &&
       seats[0].hand.length) || 5;
-    var layout = computeLayout(w, h, Math.max(seats.length, 1), handSize);
+    var layout = computeLayout(ctx, w, h, Math.max(seats.length, 1),
+      handSize);
     var fx = view.effects || {};
     var order = view.order && view.order.length ? view.order :
       seats.map(function (_, i) { return i; });
@@ -327,8 +404,8 @@
     // the canvas, so a seat at the top of the frame never pushes its talk
     // off-screen.
     if (view.talk !== false && seat.say) {
-      drawSpeech(ctx, spot.x, spot.y - size * 0.62 - sayHeight(scale),
-        block.w, seat.say, scale, hex, layout);
+      drawSpeech(ctx, spot.x, spot.y - block.above + block.sayH, block,
+        seat.say, hex, layout);
     }
 
     ctx.save();
@@ -376,8 +453,8 @@
     ctx.restore();
 
     // Notes parchment: the read on the table forming in public.
-    drawParchment(ctx, spot.x - block.w / 2, textY + 21 * scale, block.w,
-      seat.notes || "", scale, block.noteLines);
+    drawParchment(ctx, spot.x - block.w / 2, textY + 21 * scale, block,
+      seat.notes || "");
   }
 
   function drawHand(ctx, cx, top, block, seat, view, hex, opts) {
@@ -498,16 +575,22 @@
     ctx.restore();
   }
 
-  function drawSpeech(ctx, cx, top, width, text, scale, hex, layout) {
-    var pad = SAY_PAD * scale;
-    var lineH = SAY_LINE_H * scale;
-    var h = sayHeight(scale);
-    var w = width;
-    var x = Math.max(4, Math.min(layout.width - w - 4, cx - w / 2));
-    var y = Math.max(4, Math.min(layout.height - h - 4, top));
+  // `bandBottom` is the bottom edge of the reserved speech band — the plate
+  // hangs from it and grows UPWARD into room the layout already reserved for a
+  // full-cap remark, so a short remark is a small plate over the cog's head
+  // and a 140-character one moves nothing else on the table.
+  function drawSpeech(ctx, cx, bandBottom, block, text, hex, layout) {
+    var pad = block.sayPad;
+    var lineH = block.lineH;
+    var scale = block.scale;
     ctx.save();
-    ctx.font = Math.max(9, Math.round(10.5 * scale)) + "px " + BODY_FONT;
-    var lines = wrapLines(ctx, text, w - pad * 2, SAY_LINES);
+    ctx.font = block.font + "px " + BODY_FONT;
+    var lines = wrapLines(ctx, text, block.w - pad * 2, block.sayLines);
+    var h = Math.max(1, lines.length) * lineH + pad * 2;
+    // The plate is as wide as the widest line on it, up to the band's width.
+    var w = Math.min(block.w, Math.ceil(inkWidth(ctx, lines)) + pad * 2);
+    var x = Math.max(4, Math.min(layout.width - w - 4, cx - w / 2));
+    var y = Math.max(4, Math.min(layout.height - h - 4, bandBottom - h));
     ctx.fillStyle = "rgba(242, 232, 216, 0.94)";
     ctx.strokeStyle = rgba(hex, 0.9);
     ctx.lineWidth = 1.5;
@@ -523,14 +606,26 @@
     ctx.restore();
   }
 
-  function drawParchment(ctx, x, y, w, text, scale, lines) {
-    var count = lines || NOTE_LINES;
-    var pad = NOTE_PAD * scale;
-    var lineH = NOTE_LINE_H * scale;
-    var h = noteHeight(scale, count);
+  // Drawn from the TOP of the reserved notes band downward: the sheet is as
+  // tall as the text on it, and the band underneath is reserved for a full-cap
+  // 400-rune payload either way, so notes growing never push anything.
+  function drawParchment(ctx, left, y, block, text) {
+    var scale = block.scale;
+    var pad = block.pad;
+    var lineH = block.lineH;
+    var ghostFont = "600 " + Math.max(8, Math.round(8 * scale)) + "px " +
+      BODY_FONT;
     ctx.save();
-    ctx.font = Math.max(9, Math.round(10.5 * scale)) + "px " + BODY_FONT;
-    var rows = text ? wrapLines(ctx, text, w - pad * 2, count) : [];
+    ctx.font = block.font + "px " + BODY_FONT;
+    var rows = text ? wrapLines(ctx, text, block.w - pad * 2,
+      block.noteLines) : [];
+    var h = Math.max(1, rows.length) * lineH + pad * 2;
+    if (!text) ctx.font = ghostFont;
+    // The sheet is as wide as the widest line on it, up to the band's width.
+    var w = Math.min(block.w, Math.ceil(inkWidth(ctx,
+      text ? rows : ["NO NOTES YET"])) + pad * 2 + 8 * scale);
+    var x = left + (block.w - w) / 2;
+    ctx.font = block.font + "px " + BODY_FONT;
     ctx.fillStyle = text ? "rgba(242, 232, 216, 0.92)" :
       "rgba(242, 232, 216, 0.10)";
     ctx.strokeStyle = text ? CARD_EDGE : "rgba(242, 232, 216, 0.18)";
@@ -559,15 +654,52 @@
       });
     } else {
       ctx.fillStyle = GHOST;
-      ctx.font = "600 " + Math.max(8, Math.round(8 * scale)) + "px " +
-        BODY_FONT;
+      ctx.font = ghostFont;
       ctx.fillText("NO NOTES YET", x + pad, y + pad);
     }
     ctx.restore();
   }
 
+  function inkWidth(ctx, lines) {
+    var widest = 0;
+    lines.forEach(function (line) {
+      widest = Math.max(widest, ctx.measureText(line).width);
+    });
+    return widest;
+  }
+
+  // Greedy word wrap. A single token wider than the line (a model can send a
+  // 60-character url) is BROKEN, not ellipsized: the bands are sized from the
+  // server's caps, so the only text that may be cut here is a frame too small
+  // to hold the cap at all.
+  function breakWord(ctx, word, maxWidth) {
+    var pieces = [];
+    var rest = word;
+    while (ctx.measureText(rest).width > maxWidth && rest.length > 1) {
+      var cut = 1;
+      while (cut < rest.length &&
+        ctx.measureText(rest.slice(0, cut + 1)).width <= maxWidth) {
+        cut += 1;
+      }
+      pieces.push(rest.slice(0, cut));
+      rest = rest.slice(cut);
+    }
+    pieces.push(rest);
+    return pieces;
+  }
+
   function wrapLines(ctx, text, maxWidth, maxLines) {
-    var words = text.split(/\s+/);
+    var words = [];
+    text.split(/\s+/).forEach(function (word) {
+      if (!word) return;
+      if (ctx.measureText(word).width <= maxWidth) {
+        words.push(word);
+      } else {
+        breakWord(ctx, word, maxWidth).forEach(function (piece) {
+          words.push(piece);
+        });
+      }
+    });
     var lines = [];
     var line = "";
     words.forEach(function (word) {
