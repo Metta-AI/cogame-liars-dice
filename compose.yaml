@@ -1,0 +1,7 @@
+services:
+  liars-dice:
+    image: coworld-liars-dice:latest
+    platform: linux/amd64
+    build:
+      context: .
+      network: host

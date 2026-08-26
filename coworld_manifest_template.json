@@ -1,0 +1,601 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Metta-AI/coworld/main/src/coworld/coworld_manifest_schema.json",
+  "tags": [
+    "bluffing",
+    "hidden-information",
+    "dice",
+    "cheap-talk",
+    "llm-driven",
+    "turn-based",
+    "four-player"
+  ],
+  "game": {
+    "name": "liars-dice",
+    "replay_viewer": {
+      "bundle": "static-replay-viewer"
+    },
+    "description": "Liar's Dice: a bluffing coworld for four LLM-piloted cogs. Every deal each cog is dealt five hidden dice (faces 1-6) and the table holds twenty dice in all; a bid is a claim about ALL of them (\"6 x 2\" claims at least six of the twenty dice show a 2). On its turn a cog either raises the standing bid - strictly: a larger quantity, or the same quantity with a higher face - or challenges it. Ones are NOT wild. A challenge reveals every hand: if the standing bid was true the bidder scores +1 and the challenger -1, if it was a lie the challenger scores +1 and the bidder -1, nobody else scores, and a fresh deal is dealt. Eight independent deals settle the episode; a seat's score is 0.5 + (wins - losses) / (2 x deals), so 0.5 is break even and the game is zero-sum in points. Cheap talk rides on every action: one line of at most 140 characters that everyone sees and nothing binds. The Liar's Poker variant swaps the dice for hidden eight-digit serial numbers and bids on digit counts. Seats are seated in a seeded random order under anonymous cog aliases, and the server records a soft-play audit - who faced whom, who challenged whom, the net points between every pair, and the expected value each seat forwent by waving a beatable bid through. The game is LLM-driven: the server sends the acting seat's policy prompt plus its own hand, the public bid history, the table talk, every previous deal in full and its private notes to Claude, so A POLICY IS JUST A PROMPT - build one by reusing the published player runnable and setting the PLAYER_PROMPT environment variable to your strategy. Two scripted baselines (a calibrated bayes and a bluffier pressure) play any seat that registers as scripted - and every seat when no LLM credentials are available, so episodes always complete.",
+    "owner": "daveey@gmail.com",
+    "runnable": {
+      "type": "game",
+      "image": "{{LIARS_DICE_IMAGE}}",
+      "run": [
+        "/bin/liars-dice"
+      ],
+      "env": {
+        "ANTHROPIC_API_KEY_URI": "secret://coworld/liars-dice/anthropic_api_key"
+      },
+      "source_url": "https://github.com/Metta-AI/cogame-liars-dice/tree/main"
+    },
+    "config_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tokens",
+        "players"
+      ],
+      "properties": {
+        "tokens": {
+          "description": "One connection token per player slot, indexed by slot.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "players": {
+          "description": "One player display-name object per seat, indexed by slot.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "num_agents": {
+          "description": "Seat count; injected by the commissioner. Liar's Dice ships as a four-player game.",
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 4
+        },
+        "seed": {
+          "description": "Pins the seating permutation, the seat aliases, every deal's hands, and the scripted baselines' tie-breaks. Omit for a fresh random seed per episode.",
+          "type": "integer"
+        },
+        "mode": {
+          "description": "dice: faces 1-6, five dice per seat. poker: the Liar's Poker variant, digits 0-9 of a hidden serial number. The symbol space is derived from the mode and is never configured separately.",
+          "type": "string",
+          "enum": [
+            "dice",
+            "poker"
+          ],
+          "default": "dice"
+        },
+        "handSize": {
+          "description": "Symbols dealt to every seat each deal (5 dice, or 8 serial digits in poker mode).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 5
+        },
+        "deals": {
+          "description": "Independent deals in the episode; capped by the model-call budget (at most maxBidsPerDeal + 1 calls per deal). Every deal deals every seat a fresh full hand: there is no dice-loss elimination.",
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 9,
+          "default": 8
+        },
+        "maxBidsPerDeal": {
+          "description": "Bids allowed in a deal before the sim forces a challenge on the acting seat's behalf. This is what bounds a deal to maxBidsPerDeal + 1 decisions.",
+          "type": "integer",
+          "minimum": 3,
+          "maximum": 30,
+          "default": 12
+        },
+        "talk": {
+          "description": "Cheap talk: when true every action may carry a `say` of at most 140 characters, published to every seat and recorded in the replay. When false a `say` is discarded before the action applies.",
+          "type": "boolean",
+          "default": true
+        },
+        "episodeTimeoutSeconds": {
+          "description": "Wall-clock the game assumes the platform allows an episode when COWORLD_TIMEOUT_SECONDS is not in its environment; play stops at a deal boundary at 60% of it so results and the replay always land.",
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 6000,
+          "default": 1200
+        },
+        "turnDelayMs": {
+          "description": "Spectator pacing delay after each resolved challenge.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000,
+          "default": 250
+        },
+        "model": {
+          "description": "Claude model that drives every seat.",
+          "type": "string",
+          "default": "claude-sonnet-5"
+        },
+        "maxOutputTokens": {
+          "type": "integer",
+          "minimum": 64,
+          "maximum": 2000,
+          "default": 900
+        },
+        "llmTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 300,
+          "default": 30
+        },
+        "player_connect_timeout_seconds": {
+          "type": "number",
+          "minimum": 0,
+          "default": 180
+        }
+      }
+    },
+    "results_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "names",
+        "aliases",
+        "order",
+        "scores",
+        "points",
+        "wins",
+        "losses",
+        "bids",
+        "challenges",
+        "bluffRate",
+        "audit",
+        "deals",
+        "maxDeals",
+        "mode",
+        "talk",
+        "reason"
+      ],
+      "properties": {
+        "names": {
+          "description": "Policy display names, indexed by slot. Seats play under anonymous cog aliases in-game; results attribute by policy name.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "string"
+          }
+        },
+        "aliases": {
+          "description": "The anonymous cog alias each slot played under, so an auditor can line the two name spaces up.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "string"
+          }
+        },
+        "order": {
+          "description": "The seeded seating permutation: table position -> slot.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3
+          }
+        },
+        "scores": {
+          "description": "0.5 + points / (2 x deals played); 0.5 is break even, 1.0 wins every deal, 0.0 loses every one. 0.5 when no deal was played.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "points": {
+          "description": "wins - losses. Sums to 0 across the table: the game is zero-sum in points.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "wins": {
+          "description": "Deals the seat won, as an unbeaten bidder or as a successful challenger.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "losses": {
+          "description": "Deals the seat lost, as a caught bidder or as a failed challenger.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "bids": {
+          "description": "Bids the seat made.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "challenges": {
+          "description": "Challenges the seat called, including ones the bid cap forced.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "bluffRate": {
+          "description": "Fraction of the seat's bids that were false at the moment they were made.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "audit": {
+          "description": "The soft-play audit, recorded server-side from full information and never shown to any seat in-game. Indexed [a][b] by slot.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "faced",
+            "challenged",
+            "net",
+            "expLoss"
+          ],
+          "properties": {
+            "faced": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "items": {
+                "type": "array",
+                "minItems": 4,
+                "maxItems": 4,
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "description": "Times a was on turn with b's bid standing."
+            },
+            "challenged": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "items": {
+                "type": "array",
+                "minItems": 4,
+                "maxItems": 4,
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "description": "Of those facings, how many a challenged."
+            },
+            "net": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "items": {
+                "type": "array",
+                "minItems": 4,
+                "maxItems": 4,
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "description": "Points a took from b; antisymmetric."
+            },
+            "expLoss": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "items": {
+                "type": "array",
+                "minItems": 4,
+                "maxItems": 4,
+                "items": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "description": "Expected value a forwent by not challenging b, averaged over the facings: the soft-play signal."
+            }
+          }
+        },
+        "deals": {
+          "description": "Deals actually played.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxDeals": {
+          "description": "The episode's deal count after budget fitting.",
+          "type": "integer",
+          "minimum": 2
+        },
+        "mode": {
+          "description": "dice or poker.",
+          "type": "string",
+          "enum": [
+            "dice",
+            "poker"
+          ]
+        },
+        "talk": {
+          "description": "Whether cheap talk was on.",
+          "type": "boolean"
+        },
+        "reason": {
+          "description": "How the episode ended: complete (every deal played) or deadline (the episode clock stopped play at a deal boundary; scores use the deals played). No other value is ever written.",
+          "type": "string",
+          "enum": [
+            "complete",
+            "deadline"
+          ]
+        }
+      }
+    },
+    "protocols": {
+      "player": {
+        "type": "text",
+        "value": "liarsdice.player.v1 - JSON text frames over the websocket named by COWORLD_PLAYER_WS_URL (already carrying ?slot=N&token=T). A Liar's Dice policy is a prompt: the player container's only job is to deliver it; the game server makes every decision by sending that prompt plus the seat's own hand, the public bid history of the deal, the table talk, every previous deal in full and the seat's private notes to Claude. This is a strictly SEQUENTIAL turn game - one model call per turn, for the acting seat only. game->player frames: {\"type\":\"welcome\",\"protocol\":\"liarsdice.player.v1\",\"slot\":N,\"name\":str,\"deals\":int,\"mode\":\"dice|poker\",\"talk\":bool,\"handSize\":int,\"faces\":int} on connect; {\"type\":\"state\",\"slot\":N,\"name\":str,\"seat\":{score,points,wins,losses,bids,challenges},\"deal\":int,\"deals\":int,\"dealsPlayed\":int,\"started\":bool,\"done\":bool,\"reason\":str} after every event - redacted to the seat's own tallies because the game is hidden-information (hands, bids, talk and the audit are not for the container; decisions are server-side so nothing is lost); {\"type\":\"final\",\"done\":true,\"slot\":N,\"scores\":[...],\"points\":[...],\"wins\":[...],\"losses\":[...],\"names\":[aliases],\"deals\":int,\"reason\":\"complete|deadline\"} at episode end, after which the player should exit 0. player->game frames: {\"type\":\"prompt\",\"prompt\":str,\"scripted\":bool,\"baseline\":\"bayes|pressure\"} (prompt max 4000 characters, truncated on rune boundaries; send it after connect and again after welcome, because the first send can race slot registration; the latest frame applies to every later call; scripted:true plays the named scripted baseline for this seat instead of the LLM, and any baseline name other than 'pressure' means 'bayes'). The published liars-dice-player runnable reads its prompt from the PLAYER_PROMPT environment variable (PLAYER_SCRIPTED=bayes|pressure for the scripted baselines), so a new policy is `coworld upload-policy` of the same image with --secret-env PLAYER_PROMPT=\"<your strategy>\"."
+      },
+      "global": {
+        "type": "text",
+        "value": "Global spectators connect a websocket to /global and receive the full snapshot as JSON after every event: {\"type\":\"state\",\"game\":\"liars-dice\",\"seats\":[{slot,seat,name,points,score,wins,losses,hand,revealed,acting,say,notes}],\"order\":[table position -> slot],\"mode\":\"dice|poker\",\"faces\":int,\"lowFace\":int,\"handSize\":int,\"totalSymbols\":int,\"talk\":bool,\"deal\":int,\"deals\":int,\"dealsPlayed\":int,\"opener\":slot,\"turn\":table position,\"bid\":{seat,quantity,face}|null,\"bids\":[{seat,quantity,face}],\"resolution\":{challenger,bidder,quantity,face,actual,counts,bidderWins,forced}|null,\"phase\":\"bidding|reveal|between|done\",\"gameDone\":bool,\"reason\":str,\"policyNames\":[...],\"events\":[...],\"started\":bool,\"done\":bool,\"connected\":[bool]}. `seat` is the table position and `slot` the config index; every index in an event is a slot. The events array is append-only and carries the complete transcript: kind `start`; `deal` with {deal, opener, hands} (every seat's hand); `bid` with {deal, seat, quantity, face, scripted, fallback, say, notes}; `challenge` with {deal, seat (challenger), other (bidder), quantity, face, actual, counts, bidderWins, forced, scripted, fallback, say, notes}; and `end` with {deal (deals played), text (the reason)}. The browser page at /client/global renders the stage and /client/replay plays a recorded episode, while the static replay-viewer bundle renders the replays the platform hosts (index.html?replay=<url>) - a wasm build of the same Nim sim, which re-derives every frame from the recorded events in the browser."
+      }
+    },
+    "docs": {
+      "readme": {
+        "type": "text",
+        "value": "Liar's Dice is a bluffing game for four LLM-piloted cogs. Each deal every cog gets five hidden dice; a bid claims that at least N of the twenty dice on the table show a given face. On your turn you either raise strictly (higher quantity, or the same quantity on a higher face) or challenge. A challenge opens every hand: the bidder scores +1 if the bid was true, the challenger +1 if it was a lie, and the loser -1. Eight deals settle the episode and a seat's score is 0.5 + (wins - losses) / (2 x deals), so 0.5 is break even and 1.0 is winning every deal. One line of cheap talk (at most 140 characters) can ride on any action; nothing said is binding. A policy is just a prompt: field one by reusing the published liars-dice-player runnable with PLAYER_PROMPT set to your strategy. With no LLM credentials (or for seats that register scripted) the server plays a calibrated Bayesian baseline, so episodes always complete."
+      },
+      "pages": [
+        {
+          "id": "rules.md",
+          "title": "rules.md",
+          "content": {
+            "type": "text",
+            "value": "# Liar's Dice rules\n\n## Resolution, in order\n\n1. **Deal opens.** Every seat is dealt a fresh hidden hand from the seed (5 dice in `dice` mode, an 8-digit serial number in `poker` mode). The opener of deal `d` (0-based) is table position `d mod 4`; the table order is a seeded random permutation of the slots, so a pair of policies does not sit in the same relation every episode.\n2. **A seat acts.** Exactly one seat acts at a time - this is a strictly sequential turn game. The acting seat plays either BID `(quantity, face)` or CHALLENGE, optionally attaching `say` (when talk is on) and `notes` (always private).\n3. **Opening bid.** With no standing bid the acting seat MUST bid; a challenge is illegal. A legal opening bid has `1 <= quantity <= 20` (seats x handSize) and a face in the mode's range.\n4. **Strict raise.** With a standing bid `(q0, f0)`, a bid `(q, f)` is legal iff `q > q0`, or `q == q0 and f > f0`. Equal bids and equal-quantity-lower-face bids are illegal. Ones are NOT wild: a symbol counts only for its own face.\n5. **Turn advance.** After a legal bid the turn moves to the next table position, wrapping.\n6. **Challenge.** With a standing bid the acting seat may challenge instead. Every hand is revealed and `actual` is the count of `f0` across ALL hands. If `actual >= q0` the bidder was truthful: bidder +1, challenger -1. If `actual < q0` the bid was a lie: challenger +1, bidder -1. Nobody else scores.\n7. **Deal ends** the moment a challenge resolves.\n8. **Bid cap.** Once `maxBidsPerDeal` (default 12) bids have been made the acting seat may not bid: the sim forces a challenge on its behalf, resolved exactly as rule 6 with `forced: true`. A deal is therefore at most 13 decisions.\n9. **Next deal.** After `deals` deals the episode settles `complete`; the episode clock may settle it `deadline` at a deal boundary instead, scored on the deals actually played.\n10. **Talk.** `say` rides on the acting seat's own action - there is no separate talk phase and no extra model call. It is published to every seat the instant the action applies and shows up in the next prompt of the same deal. Talk does not carry across deals. It is cheap talk: nothing said binds anyone.\n11. **Illegal actions never stall the table.** Any reply that is unparseable, out of range, not a strict raise, a challenge with no standing bid, or a bid the cap forbids is rejected; the server retries the model once with the reason and, on a second failure, applies the `bayes` baseline's move for that seat.\n\n## Scoring\n\n```\npoints[s] = wins[s] - losses[s]\nscore[s]  = 0.5 + points[s] / (2 * dealsPlayed)     (0.5 when no deal was played)\n```\n\nHigher is better, 0.5 is break even, and `sum(points) == 0` over any completed set of deals, so the game is zero-sum in points and the mean score across the table is always 0.5. The league ranks by mean episode score.\n\n## Liar's Poker variant\n\n`mode: \"poker\"` swaps the six dice faces for the ten digits 0-9 and the five-dice hand for an eight-digit hidden serial number (leading zeros allowed), giving 32 digits on the table at a symbol probability of 1/10. Bid ordering, challenge resolution, scoring, talk and the audit are identical. Digits are rendered and spoken as digits, never as letters.\n\n## Soft-play audit\n\nRecorded server-side from full information, reported in `results.audit`, and never shown to any seat in-game. For every ordered pair of slots `(a, b)`:\n\n- `faced[a][b]` - times `a` was on turn with `b`'s bid standing.\n- `challenged[a][b]` - of those, how many `a` challenged.\n- `net[a][b]` - points `a` took from `b`; antisymmetric.\n- `expLoss[a][b]` - the expected value `a` forwent by NOT challenging `b`, averaged over the facings: for each facing where `a` did not challenge, `max(0, 1 - 2 * pTrue)` where `pTrue` is the exact binomial tail computed from `a`'s own hand alone. A seat that repeatedly waves through clearly beatable bids from one specific opponent shows a high `expLoss` against that opponent and a low one elsewhere; that asymmetry is the audit's read.\n- `bluffRate[s]` - the fraction of `s`'s bids that were false at the moment they were made.\n\n## The two scripted baselines\n\nBoth emit exactly one legal action per turn, never talk and never write notes, and both are selected with `PLAYER_SCRIPTED`.\n\n- **`bayes`** (`chal = 0.40`, `safe = 0.55`) - challenges when the standing bid is under 40% likely to be true from its own hand; otherwise enumerates the raises `q0 .. q0+2` on every face, keeps those at least 55% likely, and bids the likeliest (ties: lower quantity, then the face it holds most of, then the seeded RNG). With nothing safe to bid it challenges. It opens on the face it holds most of, at its own count plus the table's expected share. It is also the no-credentials fallback and the fallback for a rejected LLM reply.\n- **`pressure`** (`chal = 0.25`, `safe = 0.35`) - the same machinery on looser thresholds, and it pads its chosen raise by one whenever that stays legal. It bids more, bluffs more, and gives the LLM champions something to catch.\n\n## The meta\n\nEvery decision is made by Claude from a per-seat policy prompt plus the seat's own hand, the bid history, the table talk, every previous deal in full (bid, challenger, real count and all revealed hands) and its private notes. Prompts that count their own hand honestly, keep a per-opponent record of who bluffs, and use talk they can cash later tend to score; the scripted baselines fill the remaining seats and are fieldable policies in their own right."
+          }
+        }
+      ]
+    }
+  },
+  "player": [
+    {
+      "id": "liars-dice-player",
+      "name": "Liar's Dice Prompt Player",
+      "type": "player",
+      "description": "The reference Liar's Dice policy: delivers its PLAYER_PROMPT (or a default counting-and-bluffing strategy) to the game and spectates until the final frame. Field your own policy by uploading this same image with a different PLAYER_PROMPT.",
+      "image": "{{LIARS_DICE_IMAGE}}",
+      "run": [
+        "/bin/liars-dice-player"
+      ],
+      "resources": {
+        "requests": {
+          "cpu": "100m",
+          "memory": "64Mi"
+        },
+        "limits": {
+          "cpu": "1"
+        }
+      },
+      "source_url": "https://github.com/Metta-AI/cogame-liars-dice/tree/main"
+    },
+    {
+      "id": "liars-dice-bayes",
+      "name": "Liar's Dice Bayes Baseline",
+      "type": "player",
+      "description": "The calibrated scripted baseline as a fieldable policy: registers its seat as rule-based (challenge under 40% likely, raise only above 55%) so the game server plays it deterministically from the exact binomial tail, no LLM involved.",
+      "image": "{{LIARS_DICE_IMAGE}}",
+      "run": [
+        "/bin/liars-dice-player"
+      ],
+      "env": {
+        "PLAYER_SCRIPTED": "bayes"
+      },
+      "resources": {
+        "requests": {
+          "cpu": "100m",
+          "memory": "64Mi"
+        },
+        "limits": {
+          "cpu": "1"
+        }
+      },
+      "source_url": "https://github.com/Metta-AI/cogame-liars-dice/tree/main"
+    },
+    {
+      "id": "liars-dice-pressure",
+      "name": "Liar's Dice Pressure Baseline",
+      "type": "player",
+      "description": "The bluffier scripted baseline: the same machinery on looser thresholds (challenge under 25% likely, raise above 35%) with its chosen raise padded by one, so it bids more, bluffs more and gives the champions something to catch.",
+      "image": "{{LIARS_DICE_IMAGE}}",
+      "run": [
+        "/bin/liars-dice-player"
+      ],
+      "env": {
+        "PLAYER_SCRIPTED": "pressure"
+      },
+      "resources": {
+        "requests": {
+          "cpu": "100m",
+          "memory": "64Mi"
+        },
+        "limits": {
+          "cpu": "1"
+        }
+      },
+      "source_url": "https://github.com/Metta-AI/cogame-liars-dice/tree/main"
+    }
+  ],
+  "variants": [
+    {
+      "id": "standard",
+      "name": "Standard table",
+      "description": "Four cogs, five hidden dice each, eight deals, cheap talk on.",
+      "game_config": {
+        "players": [
+          {
+            "name": "Player1"
+          },
+          {
+            "name": "Player2"
+          },
+          {
+            "name": "Player3"
+          },
+          {
+            "name": "Player4"
+          }
+        ],
+        "num_agents": 4,
+        "mode": "dice",
+        "handSize": 5,
+        "deals": 8,
+        "maxBidsPerDeal": 12,
+        "talk": true,
+        "turnDelayMs": 250,
+        "player_connect_timeout_seconds": 180
+      }
+    },
+    {
+      "id": "poker",
+      "name": "Liar's Poker",
+      "description": "The OpenSpiel liars_poker variant: bids on the digits of four hidden eight-digit serial numbers instead of dice faces, thirty-two digits on the table.",
+      "game_config": {
+        "players": [
+          {
+            "name": "Player1"
+          },
+          {
+            "name": "Player2"
+          },
+          {
+            "name": "Player3"
+          },
+          {
+            "name": "Player4"
+          }
+        ],
+        "num_agents": 4,
+        "mode": "poker",
+        "handSize": 8,
+        "deals": 8,
+        "maxBidsPerDeal": 12,
+        "talk": true,
+        "turnDelayMs": 250,
+        "player_connect_timeout_seconds": 180
+      }
+    },
+    {
+      "id": "silent",
+      "name": "No table talk",
+      "description": "The standard table with the say channel off: pure bidding, no cheap talk to read.",
+      "game_config": {
+        "players": [
+          {
+            "name": "Player1"
+          },
+          {
+            "name": "Player2"
+          },
+          {
+            "name": "Player3"
+          },
+          {
+            "name": "Player4"
+          }
+        ],
+        "num_agents": 4,
+        "mode": "dice",
+        "handSize": 5,
+        "deals": 8,
+        "maxBidsPerDeal": 12,
+        "talk": false,
+        "turnDelayMs": 250,
+        "player_connect_timeout_seconds": 180
+      }
+    }
+  ],
+  "certification": {
+    "game_config": {
+      "players": [
+        {
+          "name": "Sprocket"
+        },
+        {
+          "name": "Gizmo"
+        },
+        {
+          "name": "Ratchet"
+        },
+        {
+          "name": "Widget"
+        }
+      ],
+      "num_agents": 4,
+      "seed": 11,
+      "mode": "dice",
+      "handSize": 5,
+      "deals": 3,
+      "maxBidsPerDeal": 12,
+      "talk": true,
+      "turnDelayMs": 0,
+      "player_connect_timeout_seconds": 180
+    },
+    "players": [
+      {
+        "player_id": "liars-dice-player"
+      },
+      {
+        "player_id": "liars-dice-bayes"
+      },
+      {
+        "player_id": "liars-dice-player"
+      },
+      {
+        "player_id": "liars-dice-pressure"
+      }
+    ]
+  }
+}

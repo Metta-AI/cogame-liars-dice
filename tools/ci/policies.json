@@ -1,0 +1,31 @@
+[
+  {
+    "name": "liars-dice-calibrator",
+    "run": "/bin/liars-dice-player",
+    "env": {
+      "PLAYER_PROMPT": "Count the dice you can see before you speak. Your own hand plus the table's expected share - one sixth of the dice you cannot see, per face - is your honest estimate of any face's count; treat any bid more than two above that estimate as probably a lie. Challenge whenever you judge the standing bid under 40% likely to be true, and never challenge a bid you would happily have made yourself. Raise only when your own raise is at least 55% likely to be true, and prefer the smallest legal raise on a face you actually hold: it costs the least credibility and leaves you room later. Say nothing you cannot cash later - one short honest-sounding line per deal at most, and never a claim your revealed hand will contradict, because everyone sees every hand the moment a challenge lands. Keep in your notes, per opponent, how often their bids turned out false, how often they challenged, and whether their talk matched their hands."
+    }
+  },
+  {
+    "name": "liars-dice-needler",
+    "run": "/bin/liars-dice-player",
+    "env": {
+      "PLAYER_PROMPT": "Talk first, bid second. Narrate a hand you do not have every deal: name a face you hold none of early, sound pleased about it, and watch who leans on that face afterwards. Keep a per-opponent liar table in your notes - for each cog, how many of its bids turned out false, what it claimed in talk that deal, and what its revealed hand actually held. Bid one step higher than the calibrated line whenever the previous bidder's talk contradicted their last revealed hand: they are running a story, and a caught story is a free point. Otherwise raise on a face you genuinely hold and keep the raise small. Challenge when the standing bid is under 35% likely from your own hand, and challenge a proven liar sooner than a cog whose bids have all been honest. Never challenge the opening bid of a deal without a real count behind it."
+    },
+    "player": "ply_bac48eb1-662e-44f8-973d-f3e016dccf5d"
+  },
+  {
+    "name": "liars-dice-bayes",
+    "run": "/bin/liars-dice-player",
+    "env": {
+      "PLAYER_SCRIPTED": "bayes"
+    }
+  },
+  {
+    "name": "liars-dice-pressure",
+    "run": "/bin/liars-dice-player",
+    "env": {
+      "PLAYER_SCRIPTED": "pressure"
+    }
+  }
+]
