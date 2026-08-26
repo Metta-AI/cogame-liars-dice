@@ -150,6 +150,52 @@ suite "scripted baselines":
     check bayesMean > 0.5
     check pressureMean < 0.5
 
+  test "the raise enumeration never exceeds 3 x faces candidates":
+    ## The bound `RaiseQuantitySteps * faces` holds by construction, which is
+    ## exactly why nothing was checking it. Count what the baseline actually
+    ## iterates, on real mid-deal states, in both modes.
+    var counted = 0
+    for seed in [1, 7, 42]:
+      for mode in [mDice, mPoker]:
+        let config = fixture(seats = 4, deals = 4, seed = seed, mode = mode,
+          handSize = (if mode == mPoker: 8 else: 5))
+        let client = newLlmClient(config)
+        let ceiling = RaiseQuantitySteps * config.faces()
+        var widest = 0
+        var sim = initSim(config)
+        while not sim.done:
+          let turn = sim.currentTurn()
+          case turn.kind
+          of tkDeal:
+            sim.beginDeal()
+          of tkAct:
+            if sim.bidSeat >= 0:
+              var candidates = 0
+              for candidate in sim.raiseCandidates():
+                inc candidates
+                ## Each one is inside the window the design names, so the
+                ## count cannot be held down by a candidate out of bounds.
+                check candidate.quantity >= sim.bidQuantity
+                check candidate.quantity <= sim.bidQuantity +
+                  RaiseQuantitySteps - 1
+                check candidate.face >= sim.config.lowFace()
+                check candidate.face <= sim.config.highFace()
+              check candidates <= ceiling
+              widest = max(widest, candidates)
+              inc counted
+            let decision = client.scriptedAction(sim, turn.seat, "bayes")
+            if decision.action == aBid:
+              sim.applyBid(turn.seat, decision.quantity, decision.face)
+            else:
+              sim.applyChallenge(turn.seat)
+          of tkNone:
+            discard
+        ## The enumeration really does reach its ceiling in this mode —
+        ## otherwise the bound above would be vacuous.
+        check widest == ceiling
+    ## And the mid-deal states really were visited.
+    check counted > 0
+
 suite "the LLM path":
   test "decide falls back to scripted with no credentials and no retry":
     let config = fixture(seed = 3)

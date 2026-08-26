@@ -42,7 +42,7 @@ const
   PressureChallenge* = 0.25
   PressureSafe* = 0.35
   ## The raise enumeration never proposes more than this many candidates.
-  RaiseQuantitySteps = 3
+  RaiseQuantitySteps* = 3
 
 type
   Action* = enum
@@ -184,6 +184,18 @@ proc favouriteFace(sim: Sim, seat: int): int =
       best = held
       result = face
 
+iterator raiseCandidates*(sim: Sim): tuple[quantity, face: int] =
+  ## Every (quantity, face) pair the baseline probes when a bid is standing:
+  ## the window `q0 .. min(q0 + RaiseQuantitySteps - 1, total)` on every face,
+  ## so never more than `RaiseQuantitySteps * faces` of them. The baseline
+  ## iterates this and `tests/test_bot.nim` counts it, so the bound is
+  ## asserted on real states rather than inferred from the constant.
+  let ceiling = min(sim.bidQuantity + RaiseQuantitySteps - 1,
+    sim.totalSymbols())
+  for quantity in sim.bidQuantity .. ceiling:
+    for face in sim.config.lowFace() .. sim.config.highFace():
+      yield (quantity, face)
+
 proc scriptedActionWith*(client: LlmClient, sim: Sim, seat: int,
     thresholds: Thresholds): Decision =
   ## Always legal by construction, never talks, never writes notes. The
@@ -215,28 +227,26 @@ proc scriptedActionWith*(client: LlmClient, sim: Sim, seat: int,
   var bestQuantity = -1
   var bestFace = -1
   var bestP = -1.0
-  let ceiling = min(sim.bidQuantity + RaiseQuantitySteps - 1, total)
-  for quantity in sim.bidQuantity .. ceiling:
-    for face in sim.config.lowFace() .. sim.config.highFace():
-      if not sim.legalBid(quantity, face):
-        continue
-      let p = sim.pTrue(seat, quantity, face)
-      if p < thresholds.safe:
-        continue
-      var better = p > bestP + 1e-12
-      if not better and abs(p - bestP) <= 1e-12:
-        ## Ties: the lower quantity, then the face I hold most of, then the
-        ## seeded RNG.
-        if quantity < bestQuantity:
-          better = true
-        elif quantity == bestQuantity:
-          let mine = sim.ownCount(seat, face)
-          let theirs = sim.ownCount(seat, bestFace)
-          better = mine > theirs or (mine == theirs and client.rand.rand(1) == 1)
-      if better:
-        bestP = p
-        bestQuantity = quantity
-        bestFace = face
+  for (quantity, face) in sim.raiseCandidates():
+    if not sim.legalBid(quantity, face):
+      continue
+    let p = sim.pTrue(seat, quantity, face)
+    if p < thresholds.safe:
+      continue
+    var better = p > bestP + 1e-12
+    if not better and abs(p - bestP) <= 1e-12:
+      ## Ties: the lower quantity, then the face I hold most of, then the
+      ## seeded RNG.
+      if quantity < bestQuantity:
+        better = true
+      elif quantity == bestQuantity:
+        let mine = sim.ownCount(seat, face)
+        let theirs = sim.ownCount(seat, bestFace)
+        better = mine > theirs or (mine == theirs and client.rand.rand(1) == 1)
+    if better:
+      bestP = p
+      bestQuantity = quantity
+      bestFace = face
   if bestQuantity < 0:
     result.action = aChallenge
     return
