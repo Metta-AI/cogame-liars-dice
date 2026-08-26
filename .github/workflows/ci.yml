@@ -336,3 +336,84 @@ jobs:
           path: dist/static-replay-viewer
           if-no-files-found: error
           retention-days: 14
+
+  # ---------------------------------------------------------------------
+  # The WORST-CASE RENDERER FIXTURE. docker-smoke runs with no
+  # ANTHROPIC_API_KEY, so every seat in the CI episode is a scripted baseline
+  # and every replay CI can produce carries ZERO model text: no `say`, no
+  # `notes`. The speech plate, the notes parchment and the .feed-say lines --
+  # the only chrome that exists to show what a model said -- are therefore
+  # executed by no gate above, which is exactly how cogchemists (2026-08-24)
+  # shipped four clipped speech bubbles with a fully green board.
+  #
+  # This job loads the REAL client/renderer.js through its real attachReplay
+  # driver with a frame built to hurt: a full-cap (140-rune) remark on EVERY
+  # seat at once in capitals, a full-cap (400-rune) notes payload per seat
+  # with an unbreakable 44-character token, four revealed hands, the standing
+  # bid plate and the verdict banner up together, and the bid/verdict
+  # animations played from their first frame to settled -- at seven canvas
+  # sizes from 1280x800 down to the 360 px featured-match width. The fixture
+  # asserts its own strings are still full-length and that the drawn lines
+  # reconstruct them exactly, so a quietly shortened remark fails here rather
+  # than passing while testing nothing.
+  #
+  # It needs no replay and no wasm, hence no `needs:` -- it gates the renderer,
+  # not the bundle.
+  # ---------------------------------------------------------------------
+  renderer-fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assert the fixture build hook is present and executable
+        run: |
+          set -euo pipefail
+          test -f tools/ci/build_renderer_fixture.sh || {
+            echo "::error::tools/ci/build_renderer_fixture.sh is missing"; exit 1; }
+          test -x tools/ci/build_renderer_fixture.sh || {
+            echo "::error::tools/ci/build_renderer_fixture.sh must be committed executable (mode 100755)."
+            echo "::error::Fix with: git update-index --chmod=+x tools/ci/build_renderer_fixture.sh"
+            exit 1; }
+
+      - name: Assemble the worst-case renderer fixture
+        run: ./tools/ci/build_renderer_fixture.sh "$PWD/dist/renderer-fixture"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Playwright (pinned 1.55.0)
+        run: |
+          set -euo pipefail
+          npm install --no-save playwright@1.55.0
+          npx --yes playwright@1.55.0 install --with-deps chromium
+
+      - name: Load the worst-case renderer fixture in a real browser
+        run: |
+          set -euo pipefail
+          mkdir -p "$PWD/dist/renderer-fixture-evidence"
+          # --strict-text-bounds: the fixture is a FIXED arena at every size it
+          # renders, so a string that never lands inside the canvas fails the
+          # job. The fixture itself additionally fails (data-replay-error) if
+          # any full-cap remark or notes payload was ellipsized, clipped or
+          # dropped, and only sets data-replay-loaded once every size has
+          # passed -- the renderer's own first-frame signal is intercepted and
+          # held, so this cannot go green on frame one.
+          node tools/ci/viewer_smoke.mjs \
+            --bundle dist/renderer-fixture \
+            --replay dist/renderer-fixture/fixture.json \
+            --timeout 120 \
+            --strict-text-bounds \
+            --out "$PWD/dist/renderer-fixture-evidence"
+
+      - name: Upload the renderer fixture evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: renderer-fixture
+          path: |
+            dist/renderer-fixture-evidence/viewer-smoke.png
+            dist/renderer-fixture-evidence/viewer-smoke.json
+          if-no-files-found: warn
+          retention-days: 14

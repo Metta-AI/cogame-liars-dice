@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Liar's Dice — worst-case renderer fixture</title>
+<link rel="stylesheet" href="./chrome.css">
+</head>
+<body>
+<!--
+  WORST-CASE RENDERER FIXTURE (acceptance checklist 15, last bullet).
+
+  docker_smoke.sh runs with no ANTHROPIC_API_KEY, so every seat in the CI
+  episode is a scripted baseline and every replay CI can produce carries ZERO
+  model text: no `say`, no `notes`. The speech plate, the notes parchment and
+  the .feed-say lines — the whole class of chrome that exists only to show
+  what a model said — are therefore executed by no other gate in this repo.
+
+  This page loads the REAL client/renderer.js through its real
+  attachReplay driver and hands it a frame built to hurt:
+
+    * a FULL-CAP say (MaxSayLen = 140 runes, sim.nim:27) on EVERY seat at
+      once, in capitals — the widest glyphs a model can send;
+    * a FULL-CAP notes payload (MaxNotesLen = 400 runes, sim.nim:28) on every
+      seat, containing an unbreakable 44-character token;
+    * the tallest stage state: four revealed hands, the standing-bid plate and
+      the challenge verdict banner up together;
+    * the bid slide-in and the verdict tally/fade animations played from their
+      first frame through to settled;
+
+  at seven canvas sizes from 1280x800 down to the 360 px featured-match width.
+
+  It then asserts, per size:
+    1. its own strings are still full-length (140 / 400 runes) — one quietly
+       shortened remark would leave this page passing while testing nothing;
+    2. every drawn fragment of them reconstructs the source exactly, so
+       nothing was ellipsized or dropped;
+    3. no drawn string crossed a canvas edge;
+    4. the feed carries the full remark and the full notes as text.
+
+  Failure sets data-replay-error; success sets data-replay-loaded AFTER every
+  size has passed (the renderer's own attribute set is intercepted and held,
+  so viewer_smoke.mjs cannot report success on the first drawn frame).
+  Driven by tools/ci/viewer_smoke.mjs --strict-text-bounds; assembled into a
+  servable directory by tools/ci/build_renderer_fixture.sh.
+-->
+<div id="layout">
+  <div id="stage">
+    <div id="topband">
+      <div id="wordmark">LIAR'S <span>DICE</span></div>
+      <div id="clock">DEAL 0</div>
+      <div id="topright">
+        <span id="statuschip">fixture</span>
+        <button id="feedtoggle">LOG »</button>
+      </div>
+    </div>
+    <div id="scorebug"></div>
+    <div id="board-wrap">
+      <canvas id="table" width="960" height="640"></canvas>
+      <div id="lightpool"></div>
+      <div id="grain"></div>
+      <div id="endscreen"></div>
+    </div>
+    <div id="transport">
+      <div class="scrub" id="scrub"></div>
+      <div class="tbar">
+        <button class="tbtn" id="play">❚❚</button>
+        <span class="tpos" id="pos">0 / 0</span>
+      </div>
+    </div>
+    </div>
+  <div id="feed"></div>
+</div>
+<div id="loading">WORST-CASE FIXTURE…</div>
+<script src="./renderer.js"></script>
+<script src="./worst_case.js"></script>
+</body>
+</html>
