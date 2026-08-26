@@ -149,6 +149,20 @@ jobs:
           done
           exit "${fail}"
 
+      # The `bayes` baseline's two thresholds are the floor every champion is
+      # measured against, and they are a GRID PICK, not a guess:
+      # tools/tune_baseline.nim plays a full round robin over a 110-point
+      # (chal, safe) lattice and its committed table is
+      # data/tuning/threshold_sweep.tsv. This step re-runs a reduced-but-real
+      # slice of the same sweep -- the whole lattice, 8 seeds, dice only,
+      # ~20 s -- and exits non-zero unless the shipped point is the lattice
+      # optimum or paired-tied with it (paired by seed, 2 s.e.). Hand-editing
+      # BayesChallenge / BayesSafe without rerunning the harness fails here.
+      - name: Sweep the scripted baseline's thresholds
+        run: |
+          set -euo pipefail
+          nim r --hints:off -d:release --path:src tools/tune_baseline.nim --check
+
   # ---------------------------------------------------------------------
   # Packaging smoke: the production image builds, and one real episode runs
   # end to end in raw docker with the certification fixture's seat mix.

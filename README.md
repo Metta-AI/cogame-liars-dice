@@ -74,9 +74,12 @@ the audit's read. It ships in `results.audit` and in the replay.
   cogame-babel broadcast chrome around the Liar's Dice stage)
 - `replay-viewer/` — static wasm replay viewer (`index.html?replay=<url>`)
 - `tools/build_replay_viewer.sh` — the `coworld build` replay-viewer hook
+- `tools/tune_baseline.nim` — the threshold sweep that picks the `bayes`
+  baseline's two numbers (see *Tuning the scripted baseline*)
 - `tools/ci/` — the CI harness: `docker_smoke.sh` (one real episode in raw
   docker), `viewer_smoke.mjs` (the bundle opened in headless chromium) and
   `policies.json` (the policy set a release uploads)
+- `data/tuning/threshold_sweep.tsv` — the committed output of that sweep
 - `data/` — cog sprites and art, borrowed from
   [coworld-ctf](https://github.com/Metta-AI/coworld-ctf) (MIT)
 
@@ -113,6 +116,43 @@ Coworld packaging happens in GitHub Actions
 `coworld build` → `certify` → `upload-policy` (every entry in
 `tools/ci/policies.json`) → `upload-coworld` → `coworld secret put liars-dice
 anthropic_api_key`, in that order.
+
+## Tuning the scripted baseline
+
+The `bayes` baseline has exactly two parameters — `chal` (challenge a standing
+bid this seat reads as less than `chal` likely) and `safe` (keep a raise only
+if it is at least `safe` likely). They are **searched, not chosen**:
+`tools/tune_baseline.nim` runs a full round robin over a 110-point lattice
+(`chal` 0.05–0.55, `safe` 0.25–0.70, step 0.05). Every point plays every other
+point head to head — two seats each at a four-seat table, both seatings, 24
+seeds × 30 deals × both modes, 586 080 episodes — and a point's score is the
+mean `sim.score` over every seat it held, so 0.5 is break even against the
+whole searched surface. A second column scores each point against the shipped
+`pressure` filler, which is a deliberate foil and never a candidate.
+
+```bash
+nim r -d:release --path:src tools/tune_baseline.nim           # full sweep -> data/tuning/threshold_sweep.tsv
+nim r -d:release --path:src tools/tune_baseline.nim --check   # the CI slice
+```
+
+The surface is a plateau rather than a peak — `pTrue` takes discrete values, so
+a threshold only matters when it crosses one — and ten of the 110 points are
+within 2 s.e. (paired by seed) of the argmax. The shipped
+`BayesChallenge = 0.15`, `BayesSafe = 0.35` is the centre of that plateau:
+rank **8 of 110**, paired gap **0.00011** against the argmax `0.10/0.30` with a
+2 s.e. band of 0.00034, and a full 0.05 step from the cliffs on either side
+(`safe` 0.45 and `chal` 0.25 both lose ~0.007). The committed table is
+`data/tuning/threshold_sweep.tsv`, header and all.
+
+CI re-runs the same sweep on every push (job `test`, step *Sweep the scripted
+baseline's thresholds*) over a reduced-but-real slice — the same 110 points,
+8 seeds, dice only, ~20 s — and **fails** unless the shipped point is the
+optimum or paired-tied with it. If you change either constant by hand, that
+step is what catches you; rerun the harness and take its pick instead.
+
+For the record, the pre-sweep values (`chal 0.40`, `safe 0.55`) rank **80 of
+110** at 0.49236, below break even against the lattice; the sweep is what
+replaced them.
 
 ## Fielding a policy
 

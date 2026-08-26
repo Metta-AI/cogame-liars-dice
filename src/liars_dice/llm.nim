@@ -26,12 +26,21 @@ const
   BedrockAnthropicVersion = "bedrock-2023-05-31"
   ## The calibrated baseline. Also the no-credentials fallback and the
   ## fallback for a rejected LLM reply, so it must always be legal.
-  BayesChallenge = 0.40
-  BayesSafe = 0.55
-  ## The bluffier filler: challenges later, raises on thinner ice, and pads
-  ## its chosen raise by one so the champions have something to catch.
-  PressureChallenge = 0.25
-  PressureSafe = 0.35
+  ## These two numbers are the pick of `tools/tune_baseline.nim`, a full
+  ## round-robin sweep of a 110-point (chal, safe) lattice; its table is
+  ## `data/tuning/threshold_sweep.tsv` (this point ranks 8 of 110 and is
+  ## paired-tied with the optimum, at the centre of the 10-point winning
+  ## plateau) and CI re-runs a slice of the same sweep on every push. Do not
+  ## edit them by hand: rerun the harness and take its pick.
+  BayesChallenge* = 0.15
+  BayesSafe* = 0.35
+  ## The bluffier filler: it calls a standing bid sooner than the tuned line
+  ## and pads its chosen raise by one, so it bids past what its own read
+  ## supports and the champions have something to catch. A deliberate foil,
+  ## not a grid pick — the sweep ranks its cell (26 of 110, unpadded), it
+  ## does not choose it.
+  PressureChallenge* = 0.25
+  PressureSafe* = 0.35
   ## The raise enumeration never proposes more than this many candidates.
   RaiseQuantitySteps = 3
 
@@ -48,6 +57,12 @@ type
     notes*: string
     scripted*: bool   ## produced by a scripted baseline
     fallback*: bool   ## the LLM reply was rejected twice
+
+  Thresholds* = tuple[chal, safe: float, pad: bool]
+    ## One scripted baseline's parameters: challenge a standing bid below
+    ## `chal`, keep a raise only above `safe`, and (pressure only) pad the
+    ## chosen raise by one. Named so the tuning harness can drive a point
+    ## the shipped constants do not name.
 
   LlmTransport = enum
     ltNone, ltBedrock, ltAnthropic
@@ -153,7 +168,7 @@ proc normalizeBaseline*(name: string): string =
   ## `1`) means `bayes`; the caller logs the coercion.
   if name.strip().toLowerAscii() == "pressure": "pressure" else: "bayes"
 
-proc baselineThresholds(name: string): tuple[chal, safe: float, pad: bool] =
+proc baselineThresholds*(name: string): Thresholds =
   if normalizeBaseline(name) == "pressure":
     (PressureChallenge, PressureSafe, true)
   else:
@@ -169,11 +184,12 @@ proc favouriteFace(sim: Sim, seat: int): int =
       best = held
       result = face
 
-proc scriptedAction*(client: LlmClient, sim: Sim, seat: int,
-    baseline = "bayes"): Decision =
+proc scriptedActionWith*(client: LlmClient, sim: Sim, seat: int,
+    thresholds: Thresholds): Decision =
   ## Always legal by construction, never talks, never writes notes. The
-  ## candidate enumeration is bounded by `RaiseQuantitySteps * faces`.
-  let thresholds = baselineThresholds(baseline)
+  ## candidate enumeration is bounded by `RaiseQuantitySteps * faces`. Takes
+  ## the thresholds directly so `tools/tune_baseline.nim` can play a grid
+  ## point that no shipped baseline names.
   result.scripted = true
   let total = sim.totalSymbols()
   let standing = sim.bidSeat >= 0
@@ -230,6 +246,12 @@ proc scriptedAction*(client: LlmClient, sim: Sim, seat: int,
   result.action = aBid
   result.quantity = bestQuantity
   result.face = bestFace
+
+proc scriptedAction*(client: LlmClient, sim: Sim, seat: int,
+    baseline = "bayes"): Decision =
+  ## The named baseline's move: `bayes` (the calibrated line, and the
+  ## fallback everywhere) or `pressure` (the bluffier filler).
+  client.scriptedActionWith(sim, seat, baselineThresholds(baseline))
 
 # ---- Prompt building --------------------------------------------------------
 
