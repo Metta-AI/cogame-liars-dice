@@ -13,6 +13,37 @@ if [[ "$#" -ne 1 ]]; then
 fi
 output_dir="$1"
 
+# The renderer and the fixture each keep their own copy of the server's caps
+# on the two model-authored strings (MaxSayLen / MaxNotesLen), because the
+# bands are sized from them. Nothing else compares the copies: raising a cap
+# in sim.nim alone would silently under-reserve the band, and this fixture
+# would stay green because its strings are built from ITS copy rather than
+# from the server's. So the copies are checked here, against the Nim
+# constants, before the fixture is assembled from them.
+assert_cap() {
+  local nim_const="$1" js_const="$2" want got file
+  want="$(sed -nE "s/^[[:space:]]*${nim_const}\* = ([0-9_]+)\$/\1/p" \
+    "${repo_dir}/src/liars_dice/sim.nim" | tr -d '_')"
+  if [[ -z "${want}" ]]; then
+    echo "::error::cannot read ${nim_const} from src/liars_dice/sim.nim" >&2
+    exit 1
+  fi
+  for file in client/renderer.js client/fixtures/worst_case.js; do
+    got="$(sed -nE "s/^[[:space:]]*var ${js_const} = ([0-9]+);\$/\1/p" \
+      "${repo_dir}/${file}")"
+    if [[ "${got}" != "${want}" ]]; then
+      echo "::error::${file} has ${js_const} = ${got:-<not found>} but" \
+        "src/liars_dice/sim.nim has ${nim_const} = ${want}." >&2
+      echo "::error::The speech/notes bands are sized from these caps; a" \
+        "stale mirror under-reserves them silently." >&2
+      exit 1
+    fi
+  done
+  echo "cap ${nim_const} = ${want} agrees in renderer.js and worst_case.js"
+}
+assert_cap MaxSayLen MAX_SAY_LEN
+assert_cap MaxNotesLen MAX_NOTES_LEN
+
 rm -rf "${output_dir}"
 mkdir -p "${output_dir}/assets"
 cp "${repo_dir}/client/renderer.js" "${repo_dir}/client/chrome.css" \
