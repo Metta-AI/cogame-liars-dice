@@ -441,10 +441,6 @@ body.feed-collapsed #feed { display: none; }
 .feed-deal { color: var(--paper-dim); font-size: 11px; letter-spacing: 0.04em; }
 .feed-challenge { color: var(--amber); font-weight: 700; }
 .feed-forced { color: var(--paper-dim); }
-.plate-pip.hollow {
-  background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--amber);
-}
 
 /* Scrubber beats are labelled, clickable BUTTONS, one CSS rule per kind the
    builder emits: bid / challenge-hit / challenge-miss / forced / end. */
@@ -508,6 +504,16 @@ button.beat-marker:focus-visible { outline: 1px solid var(--amber); }
    the labels have to get out of the way, or every name collapses to "…". */
 #scorebug { grid-template-columns: repeat(4, 1fr); }
 .plate-name { flex: 1 1 auto; min-width: 3.2em; }
+/* Scorebug pips: one filled pip per deal WON, one hollow pip per deal LOST
+   (design.md "Readouts": "pips = wins (filled) + losses (hollow)"), which is
+   what renderer.js:1015-1017 emits. The design's removal list names
+   `.plate-pip.hollow` among babel's tail rules; the rule is kept — declared
+   here as a liars-dice rule rather than inherited — because without it every
+   loss would draw as a win. */
+.plate-pip.hollow {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--amber);
+}
 @media (max-width: 720px) {
   #feed { display: none; }
   #scorebug { grid-template-columns: repeat(2, 1fr); }
