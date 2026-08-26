@@ -491,6 +491,11 @@ button.beat-marker:focus-visible { outline: 1px solid var(--amber); }
 .yellow { --tc: var(--yellow); }
 .violet { --tc: var(--violet); }
 .orange { --tc: #e08a3a; }
+/* The inherited chrome stops at .seat4, but renderer.js indexes COLORS (six
+   entries) for the beat markers and the feed, so a fifth or sixth seat would
+   emit `seat5` with no --tc and draw an invisible-ish paper-dim marker. Only
+   4-seat variants ship today; the rule costs one line and removes the trap. */
+.seat5 { --tc: #e08a3a; }
 
 /* Seven endscreen columns: rank, name, score, W, L, bluff rate, challenge
    rate. The inherited six-column grid was babel's row shape. */
