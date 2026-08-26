@@ -516,6 +516,17 @@ button.beat-marker:focus-visible { outline: 1px solid var(--amber); }
   .plate-label { display: none; }
   .plate-pips { display: none; }
 }
+/* The inherited .end-panel keeps `min-width: 380px`, which is wider than the
+   360 px featured-match iframe: the final standings would overflow the stage
+   and the rank/score columns would be cut. Below 480 px the panel is allowed
+   to be as narrow as the frame, and the two rate columns — the widest heads,
+   and the least of what a card that size is read for — get out of the way so
+   the NAMES survive instead of collapsing to "W…". */
+@media (max-width: 480px) {
+  .end-panel { min-width: 0; max-width: 96%; padding: 16px 14px 12px; }
+  .end-rows { grid-template-columns: auto 1fr auto auto auto; gap: 6px 10px; }
+  .end-rows > :nth-child(7n + 6), .end-rows > :nth-child(7n) { display: none; }
+}
 
 /* Transport band. relayout() measures #transport and publishes its height as
    --band on :root. Nothing here is fixed-position, so nothing can sit over
