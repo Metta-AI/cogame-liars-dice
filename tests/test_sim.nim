@@ -519,6 +519,54 @@ suite "replay":
     check frames[0].events.len == 0
     check frames[1].events.len == 1
 
+  test "every intermediate frame matches the live state, not only the last":
+    ## The check above pins the ENDPOINT: the middle of the timeline could
+    ## drift and it would still pass. Checklist 2 asks for frame by frame, so
+    ## the live sim is snapshotted after every event it logs and each snapshot
+    ## is compared with the frame the replay derives at that index.
+    var sim = initSim(fixtureConfig(deals = 3, seed = 71))
+    ## live[k] = the live state once the sim had logged k events. The recorded
+    ## start event changes no state, so indices 0 and 1 are both the opening
+    ## frame.
+    var live = newSeq[string](2)
+    live[0] = $sim.tableStateJson()
+    live[1] = live[0]
+    var step = 0
+    while not sim.done:
+      let turn = sim.currentTurn()
+      case turn.kind
+      of tkDeal:
+        sim.beginDeal()
+      of tkAct:
+        if sim.mustChallenge() or (sim.bidSeat >= 0 and step mod 3 == 2):
+          sim.applyChallenge(turn.seat, "call " & $step, "note " & $step)
+        else:
+          sim.applyBid(turn.seat, sim.bidQuantity + 1,
+            sim.config.lowFace() + step mod 6, "say " & $step, "n" & $step)
+      of tkNone:
+        break
+      inc step
+      while live.len <= sim.events.len:
+        live.add("")
+      live[sim.events.len] = $sim.tableStateJson()
+    var events: seq[GameEvent]
+    for event in sim.events:
+      events.add(eventFromJson(event.eventToJson()))
+    let frames = replayMatch(sim.config, events)
+    check frames.len == events.len + 1
+    check live.len == events.len + 1
+    var compared = 0
+    for index in 0 ..< live.len:
+      ## The closing challenge logs the challenge AND the end event in one
+      ## call, so the live sim was never observed between those two.
+      if live[index].len == 0:
+        continue
+      check $frames[index].tableStateJson() == live[index]
+      inc compared
+    ## Every frame but that one intermediate state was compared.
+    check compared >= events.len
+    check sim.dealsPlayed == 3
+
   test "a deal event that contradicts the seed is rejected":
     var sim = initSim(fixtureConfig(deals = 3, seed = 23))
     sim.playDeal()
