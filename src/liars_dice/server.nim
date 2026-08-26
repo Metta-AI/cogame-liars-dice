@@ -335,9 +335,18 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
         seatPrompt = state.prompts[turn.seat]
         seatBaseline = state.baselines[turn.seat]
         ## Past the guard every remaining decision is taken by the baseline
-        ## (instant) so the deal completes and the hands are revealed.
-        seatScripted = state.scripted[turn.seat] or
-          (playDeadline > 0.0 and now + callGuard > playDeadline)
+        ## (instant) so the deal completes and the hands are revealed. The
+        ## note is explicit about WHICH baseline finishes a deal the play
+        ## clock interrupted: "remaining decisions of that deal are `bayes`
+        ## (instant) so the deal completes" (design.md:408) — the deal is
+        ## being finished for the clock's sake, not played, so it is finished
+        ## on the calibrated line rather than on whatever pressure the seat
+        ## registered.
+        let deadlineForced =
+          playDeadline > 0.0 and now + callGuard > playDeadline
+        if deadlineForced and not state.scripted[turn.seat]:
+          seatBaseline = "bayes"
+        seatScripted = state.scripted[turn.seat] or deadlineForced
 
       ## The slow part (Claude) runs outside the lock on a snapshot; only
       ## this thread mutates the sim, so the snapshot cannot go stale.
