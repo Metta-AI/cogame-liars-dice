@@ -519,3 +519,17 @@ button.beat-marker:focus-visible { outline: 1px solid var(--amber); }
    measured from the stage floor and it can never cover the scrubber. Every
    seek dismisses it (updateEndscreen runs on every setIndex). */
 #board-wrap { min-height: 0; }
+
+/* The two published variables, consumed. #loading is the one overlay that is
+   absolutely positioned against the VIEWPORT rather than against #board-wrap,
+   so it is the one box that would otherwise cover the transport: it rides the
+   band, and the LOADING… line centres over the board, never over the
+   scrubber. --hudscale (clamp(0.7, stage width / 960, 1.4)) sizes the HUD
+   strings against the CONTAINER, not the viewport — the featured-match iframe
+   is ~360 px wide inside a 1440 px page, where a viewport-relative measure
+   would size this chrome for the page — and the 11 px floor holds the note's
+   promise (design.md:700-701) that no HUD string is drawn smaller than that. */
+#loading { bottom: var(--band, 0px); }
+#clock { font-size: max(11px, calc(15px * var(--hudscale, 1))); }
+.plate-name { font-size: max(11px, calc(14px * var(--hudscale, 1))); }
+.plate-score { font-size: max(11px, calc(17px * var(--hudscale, 1))); }
