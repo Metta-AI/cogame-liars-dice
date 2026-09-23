@@ -38,9 +38,14 @@
 #                              job loads it in a real browser -- that is the
 #                              only replay in CI that is known to be readable
 #                              by this game's own viewer.
+#   SMOKE_GAME_LOG_OUT         optional path for the game log after a pass
 #   ANTHROPIC_API_KEY          if set, forwarded to the game so the LLM path
 #                              is exercised; if unset the game must fall back
 #                              to its scripted baselines and still complete
+#   LIARS_DICE_JEV, OPENROUTER_API_KEY
+#                              select Jev and forward the local inference key
+#   METTA_CAPTURE_URL, METTA_CAPTURE_KEY
+#                              optional System One capture proxy for Jev
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -191,9 +196,21 @@ chmod 777 "${work_dir}"
 docker network create "${network}" >/dev/null
 
 game_env=()
+if [ "${LIARS_DICE_JEV:-}" = "1" ]; then
+  game_env+=(-e LIARS_DICE_JEV=1)
+  if [ -n "${METTA_CAPTURE_URL:-}" ]; then
+    game_env+=(-e "METTA_CAPTURE_URL=${METTA_CAPTURE_URL}")
+    game_env+=(-e "METTA_CAPTURE_KEY=${METTA_CAPTURE_KEY:?Required with METTA_CAPTURE_URL}")
+  fi
+  if [ -n "${OPENROUTER_API_KEY:-}" ]; then
+    game_env+=(-e "OPENROUTER_API_KEY=${OPENROUTER_API_KEY}")
+  fi
+fi
 if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
   game_env+=(-e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}")
   echo "ANTHROPIC_API_KEY present: the LLM path will be exercised"
+elif [ "${LIARS_DICE_JEV:-}" = "1" ]; then
+  echo "LIARS_DICE_JEV enabled: the System One path will be exercised"
 else
   echo "no ANTHROPIC_API_KEY: the game must complete on its scripted baselines"
 fi
@@ -341,3 +358,7 @@ if [ -f "${work_dir}/results.json" ]; then
   cp "${work_dir}/results.json" "$(dirname "${replay_out}")/results.json"
 fi
 echo "replay saved for the viewer smoke: ${replay_out} ($(wc -c < "${replay_out}" | tr -d ' ') bytes)"
+if [ -n "${SMOKE_GAME_LOG_OUT:-}" ]; then
+  mkdir -p "$(dirname "${SMOKE_GAME_LOG_OUT}")"
+  docker logs "${prefix}-game" > "${SMOKE_GAME_LOG_OUT}" 2>&1
+fi

@@ -76,6 +76,8 @@ the audit's read. It ships in `results.audit` and in the replay.
 - `tools/build_replay_viewer.sh` — the `coworld build` replay-viewer hook
 - `tools/tune_baseline.nim` — the threshold sweep that picks the `bayes`
   baseline's two numbers (see *Tuning the scripted baseline*)
+- `tools/jev_eval.nim` — paired local Jev versus bayes episodes; see
+  [Jev pilot](docs/jev-pilot.md) for the measured results and setup
 - `tools/ci/` — the CI harness: `docker_smoke.sh` (one real episode in raw
   docker), `viewer_smoke.mjs` (the bundle opened in headless chromium) and
   `policies.json` (the policy set a release uploads)
