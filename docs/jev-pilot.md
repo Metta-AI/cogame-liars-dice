@@ -18,6 +18,12 @@ The three-seed mean is 0.444 for Jev and 0.556 for bayes. Ten Jev calls cost $0.
 
 An additional seed-3 local run through the Metta capture proxy recorded four matched System One request/response pairs, all HTTP 200. A sidecar stub completed seed 4 and received four requests, each with player slot 0 and no bearer key.
 
-The `linux/amd64` Docker image passed a four-player episode using the manifest certification roster. Two seats called Jev and two used scripted baselines. The game and all four player containers exited zero; `results.reason` was `complete`; the replay parsed as JSON. Nine Jev decisions were logged, with no fallback. This is local proof only; no hosted Liar's Dice policy or game version was uploaded.
+The `linux/amd64` Docker image passed a four-player episode using the manifest certification roster. Two seats called Jev and two used scripted baselines. The game and all four player containers exited zero; `results.reason` was `complete`; the replay parsed as JSON. Nine Jev decisions were logged, with no fallback.
+
+## Hosted production canary
+
+Version `liars-dice:0.1.1` passed local and hosted Coworld certification. A private production Experience Request (`xreq_0c5a409d-7a88-48d1-a62d-fe56108657f8`) used relh-owned `relh-liars-dice-jev-20260923:v1` in slot 0 against pressure, bayesfloor, and bayesline policies. It used a $0.05 combined player LLM cap and no ladder submission. The episode completed with scores 0.5625, 0.5, 0.375, and 0.5625; total episode cost was $0.00948.
+
+The game log records nine slot-0 Jev judgments through the hosted System One sidecar, no failed attempts, and no scripted fallback. Jev provider cost was $0.000892458, with 260 ms mean and 364 ms maximum client-observed latency. One episode verifies hosted operation, not a competitive advantage.
 
 To reproduce the paired pilot, compile and run `tools/jev_eval.nim` with Nim and `OPENROUTER_API_KEY` set. To exercise the container path, build the Dockerfile and run `LIARS_DICE_JEV=1 OPENROUTER_API_KEY=... tools/ci/docker_smoke.sh <image>`.
