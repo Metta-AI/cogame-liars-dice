@@ -161,6 +161,10 @@ proc newLlmClient*(config: GameConfig): LlmClient =
     result.disabled = true
     echo "liars-dice llm: no LLM credentials; using scripted fallback"
 
+proc newScriptedClient*(config: GameConfig): LlmClient =
+  ## Offline training uses the published baseline without transport or logging.
+  LlmClient(rand: initRand(config.seed xor 0x5EED))
+
 # ---- Scripted baselines -----------------------------------------------------
 
 proc normalizeBaseline*(name: string): string =

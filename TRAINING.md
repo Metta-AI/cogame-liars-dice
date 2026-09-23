@@ -35,3 +35,24 @@ fit a 4,096-token context with the Qwen2.5-0.5B-Instruct tokenizer (maximum:
 1,523 tokens). One CPU optimizer step per dataset with a local tiny model
 verifies the Metta post-training path. These examples distill the scripted
 teacher; they do not establish stronger league play.
+
+# Numeric reinforcement learning
+
+Compile the persistent decision bridge and pass its manifest and variant to
+Metta's `recipes.external.coworld.train` (native PufferLib) or
+`recipes.external.coworld_metta_rl.train` (Metta RL):
+
+```sh
+nim c -d:release --path:src -o:/tmp/liars-dice-train-bridge tools/train_bridge.nim
+python tools/test_train_bridge.py /tmp/liars-dice-train-bridge
+```
+
+The three certified variants have four seats, 33 numeric observation values,
+and 321 fixed action slots. The first 320 slots encode quantity 1–32 and face
+0–9; slot 320 challenges a standing bid. Illegal choices are masked. The
+bridge advances forced challenges without asking a policy and uses the
+published Bayesian baseline for opponents and teacher labels. Numeric values
+contain the acting seat's hand counts and public state. Text messages reuse
+the hosted prompts, which also include public history and previously revealed
+hands. Complete episodes produce native scores; a truncated episode is never
+scored as complete.
