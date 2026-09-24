@@ -4,9 +4,7 @@
 ## standings and its private notes) plus that seat's prompt and asks Claude
 ## whether to raise or to call the bluff.
 ##
-## LIARS_DICE_JEV=1 selects System One for prompt-driven seats. Its endpoint
-## preference is the hosted sidecar, Metta capture proxy, then OpenRouter.
-## Otherwise, Claude credentials are selected in this order:
+## Claude credentials are selected in this order:
 ##   Bedrock sidecar / bearer token   - hosted pods
 ##   ANTHROPIC_API_KEY                - the key itself
 ##   ANTHROPIC_API_KEY_URI            - a URI holding the key
@@ -17,7 +15,7 @@
 ## scripted plays it deliberately, LLM or not.
 
 import
-  std/[json, math, monotimes, os, random, strutils, times, unicode],
+  std/[json, math, os, random, strutils, unicode],
   bitworld/runtime,
   curly,
   sim
@@ -67,7 +65,7 @@ type
     ## the shipped constants do not name.
 
   LlmTransport = enum
-    ltNone, ltBedrock, ltAnthropic, ltJev
+    ltNone, ltBedrock, ltAnthropic
 
   LlmClient* = ref object
     curl: Curly
@@ -77,9 +75,6 @@ type
     bedrockModels: seq[string]  ## candidates, tried in order on denial
     bedrockModel: int           ## index into bedrockModels
     bedrockToken: string
-    jevEndpoint: string
-    jevKey: string
-    jevTrajectoryId: string
     model: string
     maxOutputTokens: int
     timeoutSeconds: int
@@ -143,30 +138,6 @@ proc newLlmClient*(config: GameConfig): LlmClient =
   )
   let bedrockEndpoint = getEnv("AWS_ENDPOINT_URL_BEDROCK_RUNTIME").strip()
   let bedrockToken = getEnv("AWS_BEARER_TOKEN_BEDROCK").strip()
-  if getEnv("LIARS_DICE_JEV") == "1":
-    let openRouterKey = getEnv("OPENROUTER_API_KEY").strip()
-    let captureUrl = getEnv("METTA_CAPTURE_URL").strip()
-    if bedrockEndpoint.len == 0 and captureUrl.len == 0 and
-        openRouterKey.len == 0:
-      result.disabled = true
-      echo "liars-dice jev: no sidecar, capture proxy, or OpenRouter key; using scripted fallback"
-      return
-    result.transport = ltJev
-    if bedrockEndpoint.len > 0:
-      result.jevEndpoint = bedrockEndpoint.strip(chars = {'/'}, leading = false)
-    elif captureUrl.len > 0:
-      result.jevEndpoint = captureUrl.strip(chars = {'/'}, leading = false)
-      result.jevKey = getEnv("METTA_CAPTURE_KEY")
-      if result.jevKey.len == 0:
-        raise newException(LiarsDiceError, "METTA_CAPTURE_KEY is required")
-      result.jevTrajectoryId = "liars-dice-jev-" & $config.seed
-    else:
-      result.jevEndpoint = "https://openrouter.ai/api"
-      result.jevKey = openRouterKey
-    result.model = "typesafe/jev-1.13"
-    result.curl = newCurly()
-    echo "liars-dice jev: System One transport enabled"
-    return
   if bedrockEndpoint.len > 0 or bedrockToken.len > 0:
     let region = getEnv("AWS_REGION",
       getEnv("AWS_DEFAULT_REGION", "us-west-2"))
@@ -531,99 +502,6 @@ proc completeText(client: LlmClient, system, user: string): string =
     raise newException(LiarsDiceError, "reply cut off at max_tokens before " &
       "any JSON: " & clipText(result, 160).replace("\n", " "))
 
-proc jevDecision(client: LlmClient, sim: Sim, seat: int, prompt: string): Decision =
-  if sim.mustChallenge():
-    return Decision(action: aChallenge)
-  var criteria = newJObject()
-  var candidates: seq[tuple[name: string, decision: Decision]]
-  for (quantity, face) in sim.raiseCandidates():
-    if not sim.legalBid(quantity, face):
-      continue
-    let name = "bid_" & $quantity & "_" & $face
-    criteria[name] = %("Bid " & bidText(quantity, face) & ". You hold " &
-      $sim.ownCount(seat, face) & " of this face; the exact probability this " &
-      "bid is true from your private hand is " & $sim.pTrue(seat, quantity, face) & ".")
-    candidates.add((name, Decision(action: aBid, quantity: quantity,
-      face: face)))
-  let baseline = client.scriptedAction(sim, seat)
-  if baseline.action == aBid:
-    let name = "bid_" & $baseline.quantity & "_" & $baseline.face
-    if not criteria.hasKey(name):
-      criteria[name] = %("The calibrated bayes policy bids " &
-        bidText(baseline.quantity, baseline.face) & ". You hold " &
-        $sim.ownCount(seat, baseline.face) & " of this face; the probability " &
-        "this bid is true is " &
-        $sim.pTrue(seat, baseline.quantity, baseline.face) & ".")
-      candidates.add((name, Decision(action: aBid, quantity: baseline.quantity,
-        face: baseline.face)))
-  if sim.bidSeat >= 0:
-    criteria["challenge"] = %("Challenge the standing bid " &
-      bidText(sim.bidQuantity, sim.bidFace) & ". The probability it is false " &
-      "from your private hand is " &
-      $(1.0 - sim.pTrue(seat, sim.bidQuantity, sim.bidFace)) & ".")
-    candidates.add(("challenge", Decision(action: aChallenge)))
-
-  var headers: HttpHeaders
-  headers["content-type"] = "application/json"
-  if client.jevKey.len > 0:
-    headers["authorization"] = "Bearer " & client.jevKey
-  else:
-    headers["x-coworld-player-slot"] = $seat
-  if client.jevTrajectoryId.len > 0:
-    headers["x-metta-trajectory-id"] = client.jevTrajectoryId
-  let body = %*{
-    "state": systemPrompt(sim, seat) & "\n\n" & userPrompt(sim, seat, prompt),
-    "model": client.model,
-    "questions": {
-      "decision": {
-        "type": "choice",
-        "instructions": "Choose the legal bid or challenge that maximizes your chance of winning the deal from your private hand and public history.",
-        "criteria": criteria
-      }
-    }
-  }
-  let started = getMonoTime()
-  let response = client.curl.post(client.jevEndpoint & "/v1/systemone",
-    headers, $body, client.timeoutSeconds)
-  if response.code < 200 or response.code >= 300:
-    raise newException(LiarsDiceError, "Jev HTTP " & $response.code &
-      ": " & clipText(response.body, 300))
-  let payload = parseJson(response.body)
-  let answer = payload["answers"]["decision"]
-  let choice = answer["choice"].getStr()
-  let probabilities = answer["probabilities"]
-  if answer["type"].getStr() != "choice" or not criteria.hasKey(choice) or
-      probabilities.len != criteria.len:
-    raise newException(LiarsDiceError, "Jev returned the wrong choice set")
-  let confidence = answer["confidence"].getFloat()
-  if confidence < 0 or confidence > 1:
-    raise newException(LiarsDiceError, "Jev confidence is outside [0, 1]")
-  var total = 0.0
-  var chosen = -1.0
-  for name, probability in probabilities.pairs:
-    if not criteria.hasKey(name):
-      raise newException(LiarsDiceError, "Jev returned an unknown choice")
-    let value = probability.getFloat()
-    if value < 0 or value > 1:
-      raise newException(LiarsDiceError, "Jev probability is outside [0, 1]")
-    total += value
-    if name == choice: chosen = value
-  if abs(total - 1) > probabilities.len.float * 0.005 + 1e-6 or
-      chosen < 0:
-    raise newException(LiarsDiceError, "Jev probabilities do not sum to one")
-  for _, probability in probabilities.pairs:
-    if probability.getFloat() > chosen + 1e-6:
-      raise newException(LiarsDiceError, "Jev choice is not most probable")
-  echo "liars-dice jev: seat ", seat, " choice ", choice,
-    " confidence ", confidence, " cost ", payload["usage"]{"cost"}.getFloat(),
-    " latency_ms ", (getMonoTime() - started).inMilliseconds()
-  if confidence < 0.1:
-    return baseline
-  for candidate in candidates:
-    if candidate.name == choice:
-      return candidate.decision
-  raise newException(LiarsDiceError, "Jev choice has no action")
-
 # ---- Reply parsing ----------------------------------------------------------
 
 proc parseAction(payload: JsonNode): Action =
@@ -683,21 +561,18 @@ proc decide*(client: LlmClient, sim: Sim, seat: int, prompt: string,
   for attempt in 0 .. 1:
     try:
       var decision: Decision
-      if client.transport == ltJev:
-        decision = client.jevDecision(sim, seat, prompt)
-      else:
-        var user = sim.userPrompt(seat, prompt)
-        if attempt > 0:
-          user.add("\n\nYour previous reply was invalid: " & reason &
-            ". Respond with ONLY the requested JSON object; " &
-            (if sim.bidSeat >= 0:
-               "a bid must strictly raise " &
-                 bidText(sim.bidQuantity, sim.bidFace) &
-                 ", or answer {\"action\":\"challenge\"}."
-             else:
-               "you open this deal, so you must bid."))
-        let payload = extractJsonObject(client.completeText(system, user))
-        decision = parseReply(sim, payload)
+      var user = sim.userPrompt(seat, prompt)
+      if attempt > 0:
+        user.add("\n\nYour previous reply was invalid: " & reason &
+          ". Respond with ONLY the requested JSON object; " &
+          (if sim.bidSeat >= 0:
+             "a bid must strictly raise " &
+               bidText(sim.bidQuantity, sim.bidFace) &
+               ", or answer {\"action\":\"challenge\"}."
+           else:
+             "you open this deal, so you must bid."))
+      let payload = extractJsonObject(client.completeText(system, user))
+      decision = parseReply(sim, payload)
       ## Reject illegal replies against a PROBE copy of the sim so the retry
       ## carries the reason and the real sim is never touched.
       var probe = sim

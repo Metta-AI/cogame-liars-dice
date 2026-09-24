@@ -42,8 +42,9 @@
 #   ANTHROPIC_API_KEY          if set, forwarded to the game so the LLM path
 #                              is exercised; if unset the game must fall back
 #                              to its scripted baselines and still complete
-#   LIARS_DICE_JEV, OPENROUTER_API_KEY
-#                              select Jev and forward the local inference key
+#   SMOKE_JEV_SLOT             seat using a player-side Jev policy (optional)
+#   TYPESAFE_API_KEY, TYPESAFE_BASE_URL
+#                              local Jev player transport
 #   METTA_CAPTURE_URL, METTA_CAPTURE_KEY
 #                              optional System One capture proxy for Jev
 set -euo pipefail
@@ -196,21 +197,9 @@ chmod 777 "${work_dir}"
 docker network create "${network}" >/dev/null
 
 game_env=()
-if [ "${LIARS_DICE_JEV:-}" = "1" ]; then
-  game_env+=(-e LIARS_DICE_JEV=1)
-  if [ -n "${METTA_CAPTURE_URL:-}" ]; then
-    game_env+=(-e "METTA_CAPTURE_URL=${METTA_CAPTURE_URL}")
-    game_env+=(-e "METTA_CAPTURE_KEY=${METTA_CAPTURE_KEY:?Required with METTA_CAPTURE_URL}")
-  fi
-  if [ -n "${OPENROUTER_API_KEY:-}" ]; then
-    game_env+=(-e "OPENROUTER_API_KEY=${OPENROUTER_API_KEY}")
-  fi
-fi
 if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
   game_env+=(-e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}")
   echo "ANTHROPIC_API_KEY present: the LLM path will be exercised"
-elif [ "${LIARS_DICE_JEV:-}" = "1" ]; then
-  echo "LIARS_DICE_JEV enabled: the System One path will be exercised"
 else
   echo "no ANTHROPIC_API_KEY: the game must complete on its scripted baselines"
 fi
@@ -231,6 +220,15 @@ docker run -d --name "${prefix}-game" \
 for ((slot = 0; slot < seats; slot++)); do
   eval "penv=( $(cat "${work_dir}/env-${slot}.args") )"
   eval "pcmd=( $(cat "${work_dir}/cmd-${slot}.args") )"
+  if [ "${SMOKE_JEV_SLOT:-}" = "${slot}" ]; then
+    penv+=(-e PLAYER_JEV=1)
+    if [ -n "${TYPESAFE_API_KEY:-}" ]; then
+      penv+=(-e "TYPESAFE_API_KEY=${TYPESAFE_API_KEY}")
+    fi
+    if [ -n "${TYPESAFE_BASE_URL:-}" ]; then
+      penv+=(-e "TYPESAFE_BASE_URL=${TYPESAFE_BASE_URL}")
+    fi
+  fi
   docker run -d --name "${prefix}-p${slot}" --network "${network}" \
     -e COWORLD_PLAYER_WS_URL="ws://${prefix}-game:${port}/player?slot=${slot}&token=token-${slot}" \
     ${penv[@]+"${penv[@]}"} \

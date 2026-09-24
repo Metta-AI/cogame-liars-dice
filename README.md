@@ -17,17 +17,13 @@ Everyone sees it the instant the action applies, nothing said is binding, and
 the rules never reference it — it exists so a policy can build a picture it
 can cash in later, and so a spectator can watch it try.
 
-**The game is LLM-driven and a policy is just a prompt.** On each turn the
-game server sends the acting seat's policy prompt plus its own hand, the
-public bid history of the deal, the table talk, **every previous deal in full**
-(the challenged bid, who challenged, the real count, and all revealed hands),
-the standings and the seat's private notes to Claude, which answers with a bid
-or a challenge, a line of talk and new notes. Player containers exist only to
-deliver their prompt over the websocket. This is a strictly **sequential** turn
-game: one model call per turn, for the acting seat only. Two built-in
-**scripted baselines** — `bayes` (calibrated) and `pressure` (bluffier) — play
-any seat that registers as scripted, and every seat when no LLM credentials are
-available, so episodes (and offline certification) always complete.
+**Players act through seat observations and legal bid or challenge actions.**
+An external player sees its own hand, the public bid and talk history, prior
+revealed deals, standings, and its private notes. The game validates each
+submitted action and owns the rules, score, and replay. Existing prompt
+policies use the game’s Claude adapter; `bayes` and `pressure` remain
+scripted baselines. This is a sequential turn game: only the acting seat
+decides. Offline certification completes with the scripted fallback.
 
 Seats play under **anonymous cog names** (Sprocket, Gizmo, …) in a seeded
 random seating order: policy display names never reach a prompt, so nobody can
@@ -68,16 +64,16 @@ the audit's read. It ships in `results.audit` and in the replay.
 - `src/liars_dice/llm.nim` — Claude client, the prompts, tolerant reply
   parsing, and the two scripted baselines
 - `src/liars_dice/server.nim` — mummy HTTP/WS server (player, global, replay)
-- `src/liars_dice_player.nim` — the prompt-delivery player (`PLAYER_PROMPT` /
-  `PLAYER_SCRIPTED=bayes|pressure`)
+- `src/liars_dice_player.nim` — the player runnable (`PLAYER_PROMPT`,
+  `PLAYER_SCRIPTED=bayes|pressure`, or `PLAYER_JEV=1`)
 - `client/` — shared canvas renderer + global/player/replay pages (the
   cogame-babel broadcast chrome around the Liar's Dice stage)
 - `replay-viewer/` — static wasm replay viewer (`index.html?replay=<url>`)
 - `tools/build_replay_viewer.sh` — the `coworld build` replay-viewer hook
 - `tools/tune_baseline.nim` — the threshold sweep that picks the `bayes`
   baseline's two numbers (see *Tuning the scripted baseline*)
-- `tools/jev_eval.nim` — paired local Jev versus bayes episodes; see
-  [Jev pilot](docs/jev-pilot.md) for the measured results and setup
+- [Jev pilot](docs/jev-pilot.md) records the earlier paired results and the
+  player-side policy correction.
 - `tools/ci/` — the CI harness: `docker_smoke.sh` (one real episode in raw
   docker), `viewer_smoke.mjs` (the bundle opened in headless chromium) and
   `policies.json` (the policy set a release uploads)
@@ -158,7 +154,7 @@ replaced them.
 
 ## Fielding a policy
 
-A policy is just a prompt on the published player runnable:
+A prompt policy uses the published player runnable:
 
 ```bash
 uv run coworld upload-policy <liars-dice image> --name my-liars-dice \
@@ -169,3 +165,7 @@ uv run coworld upload-policy <liars-dice image> --name my-liars-dice \
 Or field a scripted baseline: the same image with
 `--secret-env PLAYER_SCRIPTED=bayes` (or `pressure`). Any other value means
 `bayes`, and the server logs the coercion.
+
+Jev runs in the player with `--secret-env PLAYER_JEV=1` and a player-side
+System One credential. Any policy can register as an external player, read
+the seat observation, and submit the documented bid or challenge action.
