@@ -22,7 +22,7 @@ The `linux/amd64` Docker image passed a four-player episode using the manifest c
 
 ## Hosted production canary
 
-Version `liars-dice:0.1.1` passed local and hosted Coworld certification. A private production Experience Request (`xreq_0c5a409d-7a88-48d1-a62d-fe56108657f8`) used relh-owned `relh-liars-dice-jev-20260923:v1` in slot 0 against pressure, bayesfloor, and bayesline policies. It used a $0.05 combined player LLM cap and no ladder submission. The episode completed with scores 0.5625, 0.5, 0.375, and 0.5625; total episode cost was $0.00948.
+Version `liars-dice:0.1.1` passed local and hosted Coworld certification. A private production Experience Request (`xreq_0c5a409d-7a88-48d1-a62d-fe56108657f8`) used relh-owned `relh-liars-dice-jev-20260923:v1` in slot 0 against pressure, bayesfloor, and bayesline policies. It used a $0.05 combined player LLM cap and no ladder submission. The episode completed with scores 0.5625, 0.5, 0.375, and 0.5625; Kubernetes execution cost was $0.00948, separate from player model spend.
 
 The game log records nine slot-0 Jev judgments through the hosted System One sidecar, no failed attempts, and no scripted fallback. Jev provider cost was $0.000892458, with 260 ms mean and 364 ms maximum client-observed latency. One episode verifies hosted operation, not a competitive advantage.
 
