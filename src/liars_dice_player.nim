@@ -15,6 +15,7 @@
 
 import
   std/[json, options, os, strutils],
+  liars_dice/jev_policy,
   whisky
 
 const DefaultPrompt = """
@@ -39,18 +40,18 @@ when isMainModule:
     prompt = DefaultPrompt
   let requested = getEnv("PLAYER_SCRIPTED").strip()
   let scripted = requested.len > 0
+  let jev = getEnv("PLAYER_JEV") == "1"
   ## The server owns the coercion (and logs it); the player reports what it
   ## was asked for.
   let baseline = if requested.toLowerAscii() == "pressure": "pressure"
     else: "bayes"
 
   proc promptFrame(): string =
-    $ %*{
-      "type": "prompt",
-      "prompt": prompt,
-      "scripted": scripted,
-      "baseline": baseline
-    }
+    if jev:
+      $ %*{"type": "register", "control": "external"}
+    else:
+      $ %*{"type": "prompt", "prompt": prompt,
+        "scripted": scripted, "baseline": baseline}
 
   echo "liars-dice player: connecting to game"
   let socket = newWebSocket(url)
@@ -82,6 +83,10 @@ when isMainModule:
         of "final":
           echo "liars-dice player: final scores ", payload{"scores"}
           break
+        of "observation":
+          if jev:
+            socket.send($ %*{"type": "action", "event": payload["event"],
+              "action": chooseAction(payload["observation"], prompt)})
         else:
           discard
       except CatchableError as error:

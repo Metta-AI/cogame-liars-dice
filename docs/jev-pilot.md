@@ -1,12 +1,12 @@
 # Jev pilot, 2026-09-23
 
-Set `LIARS_DICE_JEV=1` on the game server to use `typesafe/jev-1.13` for prompt-driven seats. The server calls System One for a choice among legal bids and challenge. It supplies the acting seat's private hand, public history, and exact bid probabilities. Scripted `bayes` and `pressure` seats continue to use their local policies. Jev currently selects actions only; it does not produce table talk or persistent notes.
+The September 23 pilot used game-side Jev calls. That version remains historical evidence. The corrected player sets `PLAYER_JEV=1`, receives its own private hand, public history, and legal bid list, and sends a bid or challenge through the normal action interface. The game validates the move and owns replay and results. Existing prompt and scripted policies still run.
 
-Transport preference is the Coworld Bedrock sidecar (`AWS_ENDPOINT_URL_BEDROCK_RUNTIME` and `X-Coworld-Player-Slot`), then the Metta capture proxy (`METTA_CAPTURE_URL` and `METTA_CAPTURE_KEY`), then OpenRouter (`OPENROUTER_API_KEY`). The capture proxy writes request and response pairs under the trajectory ID `liars-dice-jev-<seed>`.
+The corrected player uses its own Bedrock sidecar, Metta capture proxy, OpenRouter key, or TypeSafe key. These credentials belong to the player container, not the game.
 
 ## Local evidence
 
-`tools/jev_eval.nim` ran three deals per seed with Jev in seat 0 and three scripted bayes opponents. The baseline reran seat 0 as bayes with the same seed and opponents.
+The old game-side `tools/jev_eval.nim` ran three deals per seed with Jev in seat 0 and three scripted bayes opponents. These scores do not validate the corrected policy protocol.
 
 | Seed | Jev score | Bayes score |
 | --- | ---: | ---: |
@@ -26,4 +26,4 @@ Version `liars-dice:0.1.1` passed local and hosted Coworld certification. A priv
 
 The game log records nine slot-0 Jev judgments through the hosted System One sidecar, no failed attempts, and no scripted fallback. Jev provider cost was $0.000892458, with 260 ms mean and 364 ms maximum client-observed latency. One episode verifies hosted operation, not a competitive advantage.
 
-To reproduce the paired pilot, compile and run `tools/jev_eval.nim` with Nim and `OPENROUTER_API_KEY` set. To exercise the container path, build the Dockerfile and run `LIARS_DICE_JEV=1 OPENROUTER_API_KEY=... tools/ci/docker_smoke.sh <image>`.
+For a local player-side smoke, build the image, then run `SMOKE_JEV_SLOT=0 TYPESAFE_API_KEY=... tools/ci/docker_smoke.sh <image>`. Keep the default roster for a non-Jev control on the same image.
