@@ -42,11 +42,6 @@
 #   ANTHROPIC_API_KEY          if set, forwarded to the game so the LLM path
 #                              is exercised; if unset the game must fall back
 #                              to its scripted baselines and still complete
-#   SMOKE_JEV_SLOT             seat using a player-side Jev policy (optional)
-#   TYPESAFE_API_KEY, TYPESAFE_BASE_URL
-#                              local Jev player transport
-#   METTA_CAPTURE_URL, METTA_CAPTURE_KEY
-#                              optional System One capture proxy for Jev
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -220,15 +215,6 @@ docker run -d --name "${prefix}-game" \
 for ((slot = 0; slot < seats; slot++)); do
   eval "penv=( $(cat "${work_dir}/env-${slot}.args") )"
   eval "pcmd=( $(cat "${work_dir}/cmd-${slot}.args") )"
-  if [ "${SMOKE_JEV_SLOT:-}" = "${slot}" ]; then
-    penv+=(-e PLAYER_JEV=1)
-    if [ -n "${TYPESAFE_API_KEY:-}" ]; then
-      penv+=(-e "TYPESAFE_API_KEY=${TYPESAFE_API_KEY}")
-    fi
-    if [ -n "${TYPESAFE_BASE_URL:-}" ]; then
-      penv+=(-e "TYPESAFE_BASE_URL=${TYPESAFE_BASE_URL}")
-    fi
-  fi
   docker run -d --name "${prefix}-p${slot}" --network "${network}" \
     -e COWORLD_PLAYER_WS_URL="ws://${prefix}-game:${port}/player?slot=${slot}&token=token-${slot}" \
     ${penv[@]+"${penv[@]}"} \

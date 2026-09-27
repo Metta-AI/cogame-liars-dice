@@ -64,16 +64,14 @@ the audit's read. It ships in `results.audit` and in the replay.
 - `src/liars_dice/llm.nim` — Claude client, the prompts, tolerant reply
   parsing, and the two scripted baselines
 - `src/liars_dice/server.nim` — mummy HTTP/WS server (player, global, replay)
-- `src/liars_dice_player.nim` — the player runnable (`PLAYER_PROMPT`,
-  `PLAYER_SCRIPTED=bayes|pressure`, or `PLAYER_JEV=1`)
+- `src/liars_dice_player.nim` — the prompt and scripted player runnable
+  (`PLAYER_PROMPT`, `PLAYER_SCRIPTED=bayes|pressure`)
 - `client/` — shared canvas renderer + global/player/replay pages (the
   cogame-babel broadcast chrome around the Liar's Dice stage)
 - `replay-viewer/` — static wasm replay viewer (`index.html?replay=<url>`)
 - `tools/build_replay_viewer.sh` — the `coworld build` replay-viewer hook
 - `tools/tune_baseline.nim` — the threshold sweep that picks the `bayes`
   baseline's two numbers (see *Tuning the scripted baseline*)
-- [Jev pilot](docs/jev-pilot.md) records the earlier paired results and the
-  player-side policy correction.
 - `tools/ci/` — the CI harness: `docker_smoke.sh` (one real episode in raw
   docker), `viewer_smoke.mjs` (the bundle opened in headless chromium) and
   `policies.json` (the policy set a release uploads)
@@ -166,6 +164,5 @@ Or field a scripted baseline: the same image with
 `--secret-env PLAYER_SCRIPTED=bayes` (or `pressure`). Any other value means
 `bayes`, and the server logs the coercion.
 
-Jev runs in the player with `--secret-env PLAYER_JEV=1` and a player-side
-System One credential. Any policy can register as an external player, read
-the seat observation, and submit the documented bid or challenge action.
+Any policy can register as an external player, read the private seat
+observation, and submit the documented bid or challenge action.
