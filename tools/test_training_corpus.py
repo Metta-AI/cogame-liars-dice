@@ -33,6 +33,7 @@ for run in manifest["runs"]:
     assert events[-1]["source_revision"] == manifest["source_revision"]
     assert set(events[-1]["participant_outcomes"]) == {"0", "1", "2", "3"}
     label_count = 0
+    actual_labels = []
     for decision in events[:-1]:
         assert decision["visibility"] == "private"
         assert decision["source_revision"] == manifest["source_revision"]
@@ -59,12 +60,18 @@ for run in manifest["runs"]:
             and selected["request"] is None
             and selected["platform_call_id"] is None
         )
-        row = labels.pop((decision["episode_id"], decision["decision_id"]))
+        row = labels.pop((decision["episode_id"], str(decision["decision_index"])))
         assert row["prompt"] == selected["prompt"]
         assert (
             json.loads(row["completion"][0]["content"]) == decision["executed_action"]
         )
+        actual_labels.append(
+            {
+                "decision_index": decision["decision_index"],
+                "decision_id": decision["decision_id"],
+            }
+        )
         label_count += 1
-    assert label_count == run["labels"]
+    assert label_count == run["labels"] and actual_labels == run["label_ids"]
 assert not labels
 print(manifest["variant"], len(manifest["runs"]), "complete private episodes passed")
