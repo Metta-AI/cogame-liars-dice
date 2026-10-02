@@ -40,7 +40,8 @@ when isMainModule:
     config = sampleEpisode(config)
     var sim = initSim(config)
     let episode = "liars-dice-" & variant & "-" & $seed
-    let trajectory = newDecisionTrajectory(episode, episode, "liars-dice",
+    let seedFamily = "liars-dice-" & $seed
+    let trajectory = newDecisionTrajectory(episode, seedFamily, "liars-dice",
       sourceRevision, sourceRevision)
     let client = newScriptedClient(config)
     while not sim.done:
@@ -84,7 +85,7 @@ when isMainModule:
         if attempt["attempt_id"].getStr() == selected and attempt["policy"].getStr() == "scripted-bayes":
           doAssert attempt["parsed_action"] == event["executed_action"]
           labelIds.add(%*{"decision_index": event["decision_index"], "decision_id": event["decision_id"]})
-          rows.add($(%*{"episode_id": episode, "seed": episode,
+          rows.add($(%*{"episode_id": episode, "seed": seedFamily,
             "decision_id": event["decision_index"],
             "prompt": attempt["prompt"],
             "completion": [{"role": "assistant", "content": attempt["response"]}],

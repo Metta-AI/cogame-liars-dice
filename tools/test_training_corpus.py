@@ -31,6 +31,8 @@ for run in manifest["runs"]:
     ]
     assert events[-1]["event_type"] == "episode" and events[-1]["status"] == "completed"
     assert events[-1]["source_revision"] == manifest["source_revision"]
+    seed_family = manifest["game"] + "-" + str(run["seed"])
+    assert events[-1]["seed_family"] == seed_family
     assert set(events[-1]["participant_outcomes"]) == {"0", "1", "2", "3"}
     label_count = 0
     actual_labels = []
@@ -61,7 +63,7 @@ for run in manifest["runs"]:
             and selected["platform_call_id"] is None
         )
         row = labels.pop((decision["episode_id"], str(decision["decision_index"])))
-        assert row["prompt"] == selected["prompt"]
+        assert row["prompt"] == selected["prompt"] and row["seed"] == seed_family
         assert (
             json.loads(row["completion"][0]["content"]) == decision["executed_action"]
         )
