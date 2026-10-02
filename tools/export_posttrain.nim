@@ -72,7 +72,7 @@ when isMainModule:
     trajectory.finishTrajectory(sim)
     let events = trajectory.eventsJsonl()
     let destination = output / "episodes" / (episode & ".jsonl")
-    trajectory.writeEventsToUri(destination)
+    trajectory.writeEventsToUri("file://" & absolutePath(destination))
     var rows: seq[string]
     for line in events.splitLines():
       if line.len == 0: continue
