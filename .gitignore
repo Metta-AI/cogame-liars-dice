@@ -7,3 +7,8 @@ replay-viewer/dist/nimcache/
 nim.cfg
 viewer-smoke.png
 viewer-smoke.json
+
+# Private training evidence must stay outside game images/public replay.
+training-corpus/
+private-trajectories/
+posttrain-output/

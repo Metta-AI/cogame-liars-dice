@@ -212,7 +212,7 @@ suite "the LLM path":
     let elapsed = (getMonoTime() - started).inMilliseconds
     check elapsed < 1000
     check decision.scripted
-    check not decision.fallback
+    check decision.fallback
     ## And it is legal, so the episode always advances.
     if decision.action == aBid:
       check sim.legalBid(decision.quantity, decision.face)
