@@ -16,8 +16,9 @@
 ## scripted plays it deliberately, LLM or not.
 
 import
-  std/[json, math, os, random, strutils, unicode],
+  std/[json, options, times, math, os, random, strutils, unicode],
   bitworld/runtime,
+  bitworld/decision_trajectory,
   curly,
   sim
 
@@ -51,6 +52,9 @@ type
     aChallenge = "challenge"
 
   Decision* = object
+    nativeAttempts*: seq[DecisionAttempt]
+    policy*: string
+    submittedResponse*: string
     action*: Action
     quantity*: int
     face*: int
@@ -80,6 +84,7 @@ type
     model: string
     maxOutputTokens: int
     timeoutSeconds: int
+    temperature: float
     disabled*: bool   ## true once credentials are known-unavailable
     rand: Rand
 
@@ -98,7 +103,7 @@ proc resolveApiKey(): string =
   try:
     result = readCogameUri(uri, "ANTHROPIC_API_KEY_URI").strip()
   except CatchableError as error:
-    echo "liars-dice llm: failed to fetch ANTHROPIC_API_KEY_URI: ", error.msg
+    echo "liars-dice llm: failed to fetch ANTHROPIC_API_KEY_URI"
     result = ""
 
 proc bedrockModelIds(): seq[string] =
@@ -138,6 +143,9 @@ proc newLlmClient*(config: GameConfig): LlmClient =
     timeoutSeconds: config.llmTimeoutSeconds,
     rand: initRand(config.seed xor 0x5EED)
   )
+  result.temperature = parseFloat(getEnv("COWORLD_LLM_TEMPERATURE", "1"))
+  if result.temperature < 0 or result.temperature > 1 or classify(result.temperature) in {fcNan, fcInf, fcNegInf}:
+    raise newException(ValueError, "COWORLD_LLM_TEMPERATURE must be finite and between zero and one")
   let sidecarEndpoint = getEnv("COWORLD_LLM_ENDPOINT").strip()
   if sidecarEndpoint.len > 0:
     result.transport = ltSidecar
@@ -461,9 +469,19 @@ proc extractJsonObject*(text: string): JsonNode =
       head.replace("\n", " "))
   parseJson(text[start .. stop])
 
-proc completeText(client: LlmClient, system, user: string, slot: int): string =
+proc decisionAction*(sim: Sim, decision: Decision): JsonNode =
+  result = %*{"notes": (if decision.notes.len > 0: cleanNotes(decision.notes) else: sim.notes[sim.actingSeat()])}
+  result["action"] = %($decision.action)
+  result["say"] = %decision.say
+  if decision.action == aBid:
+    result["quantity"] = %decision.quantity
+    result["face"] = %decision.face
+
+proc completeText(client: LlmClient, system, user: string, slot: int,
+    evidence: var DecisionAttempt): string =
   var body = %*{
     "max_tokens": client.maxOutputTokens,
+    "temperature": client.temperature,
     "system": system,
     "messages": [{"role": "user", "content": user}]
   }
@@ -490,7 +508,25 @@ proc completeText(client: LlmClient, system, user: string, slot: int): string =
     headers["x-api-key"] = client.apiKey
     headers["anthropic-version"] = AnthropicVersion
     url = AnthropicUrl
+  let temperature = body["temperature"].getFloat()
+  evidence.request = copy(body)
+  evidence.decoder = %*{"temperature": temperature,
+    "max_tokens": client.maxOutputTokens, "timeout_ms": client.timeoutSeconds * 1000}
+  let started = epochTime()
   let response = client.curl.post(url, headers, $body, client.timeoutSeconds)
+  evidence.latencyMs = some((epochTime() - started) * 1000)
+  evidence.rawResponse = %response.body
+  for (header, field) in [
+      ("x-softmax-llm-call-id", "call"),
+      ("x-coworld-checkpoint-sha256", "model"),
+      ("x-coworld-tokenizer-sha256", "tokenizer"),
+      ("x-coworld-chat-template-sha256", "template")]:
+    if response.headers[header].len > 0:
+      case field
+      of "call": evidence.platformCallId = some(response.headers[header])
+      of "model": evidence.modelIdentity = some(response.headers[header])
+      of "tokenizer": evidence.tokenizerIdentity = some(response.headers[header])
+      of "template": evidence.chatTemplateSha256 = some(response.headers[header])
   if response.code == 401 or response.code == 403:
     let detail = clipText(response.body, 400)
     if "Model access is denied" in response.body and
@@ -508,11 +544,29 @@ proc completeText(client: LlmClient, system, user: string, slot: int): string =
     raise newException(LiarsDiceError, "anthropic error " & $response.code &
       ": " & clipText(response.body, 300))
   let payload = parseJson(response.body)
+  evidence.rawResponse = payload
+  evidence.model = some(payload["model"].getStr())
+  evidence.stopReason = some(payload["stop_reason"].getStr())
+  evidence.inputTokens = some(payload["usage"]["input_tokens"].getInt())
+  evidence.outputTokens = some(payload["usage"]["output_tokens"].getInt())
+  if payload.hasKey("sampling_evidence") and payload["sampling_evidence"].kind != JNull:
+    let sampled = payload["sampling_evidence"]
+    var promptTokens, completionTokens: seq[int]
+    var probabilities: seq[float]
+    for token in sampled["prompt_token_ids"]: promptTokens.add(token.getInt())
+    for token in sampled["completion_token_ids"]: completionTokens.add(token.getInt())
+    evidence.promptTokenIds = some(promptTokens)
+    evidence.sampledTokenIds = some(completionTokens)
+    if sampled["behavior_log_probs"].kind != JNull:
+      for probability in sampled["behavior_log_probs"]: probabilities.add(probability.getFloat())
+      evidence.behaviorLogprobs = some(probabilities)
+    evidence.stopReason = some(sampled["stop_reason"].getStr())
   if payload{"stop_reason"}.getStr() == "refusal":
     raise newException(LiarsDiceError, "anthropic refusal")
   for contentBlock in payload["content"]:
     if contentBlock{"type"}.getStr() == "text":
       result.add(contentBlock{"text"}.getStr())
+  evidence.response = %result
   if payload{"stop_reason"}.getStr() == "max_tokens" and '{' notin result:
     raise newException(LiarsDiceError, "reply cut off at max_tokens before " &
       "any JSON: " & clipText(result, 160).replace("\n", " "))
@@ -570,10 +624,15 @@ proc decide*(client: LlmClient, sim: Sim, seat: int, prompt: string,
   ## exactly one call goes out per turn. Never raises: any failure falls back
   ## to the scripted baseline so the episode always advances.
   if scripted or client.disabled:
-    return client.scriptedAction(sim, seat, baseline)
+    result = client.scriptedAction(sim, seat, baseline)
+    result.policy = "scripted-" & baseline
+    result.fallback = not scripted
+    return
   let system = systemPrompt(sim, seat)
   var reason = ""
   for attempt in 0 .. 1:
+    var evidence = newDecisionAttempt("event-" & $sim.events.len & "-attempt-" & $attempt,
+      client.model, aoModel)
     try:
       var decision: Decision
       var user = sim.userPrompt(seat, prompt)
@@ -586,7 +645,9 @@ proc decide*(client: LlmClient, sim: Sim, seat: int, prompt: string,
                ", or answer {\"action\":\"challenge\"}."
            else:
              "you open this deal, so you must bid."))
-      let payload = extractJsonObject(client.completeText(system, user, seat))
+      evidence.prompt = %*[{"role": "system", "content": system},
+        {"role": "user", "content": user}]
+      let payload = extractJsonObject(client.completeText(system, user, seat, evidence))
       decision = parseReply(sim, payload)
       ## Reject illegal replies against a PROBE copy of the sim so the retry
       ## carries the reason and the real sim is never touched.
@@ -596,13 +657,22 @@ proc decide*(client: LlmClient, sim: Sim, seat: int, prompt: string,
           decision.notes)
       else:
         probe.applyChallenge(seat, decision.say, decision.notes)
+      evidence.parsedAction = sim.decisionAction(decision)
+      evidence.accepted = true
+      result.nativeAttempts.add(evidence)
+      decision.nativeAttempts = result.nativeAttempts
+      decision.policy = client.model
       return decision
     except CatchableError as error:
+      evidence.rejectionReason = some(error.msg)
+      result.nativeAttempts.add(evidence)
       reason = error.msg
-      echo "liars-dice llm: seat ", seat, " attempt ", attempt, " failed: ",
-        error.msg
+      echo "liars-dice llm: seat ", seat, " attempt ", attempt, " rejected"
       if client.disabled:
         break
   echo "liars-dice llm: seat ", seat, " falling back to the bayes baseline"
+  let attempts = result.nativeAttempts
   result = client.scriptedAction(sim, seat, "bayes")
+  result.policy = "scripted-bayes"
   result.fallback = true
+  result.nativeAttempts = attempts

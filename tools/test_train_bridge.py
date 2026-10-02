@@ -1,30 +1,47 @@
-"""Exercise every certified variant through the Metta decision protocol."""
+"""Verify the separate fixed numeric action catalog through complete games."""
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
-from metta_training.decision_environment import DecisionEncoding
-from metta_training.game import Terminal
-from metta_training.session import GameBridge
-
-
-BRIDGE = Path(sys.argv[1]).resolve()
-MANIFEST = Path(__file__).resolve().parents[1] / "coworld_manifest_template.json"
-
+binary = Path(sys.argv[1]).resolve()
+manifest = Path(__file__).resolve().parents[1] / "coworld_manifest_template.json"
 for variant in ("standard", "poker", "silent"):
-    with GameBridge([str(BRIDGE), str(MANIFEST), variant]) as bridge:
+    process = subprocess.Popen(
+        [str(binary), str(manifest), variant],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+
+    def request(payload):
+        process.stdin.write(json.dumps(payload) + "\n")
+        process.stdin.flush()
+        return json.loads(process.stdout.readline())
+
+    try:
         for seed in ("test-1", "test-2"):
-            observation = bridge.reset(seed, 4)
+            observation = request({"kind": "reset", "seed": seed, "players": 4})
             decisions = 0
-            while not isinstance(observation, Terminal):
-                encoding = DecisionEncoding.model_validate_json(bridge.request({"kind": "encode"}))
-                assert len(encoding.values) == 33
-                assert len(encoding.actions) == 321
-                action = json.loads(bridge.teacher())
-                assert encoding.action_for(encoding.indices_for(action)) == action
-                observation = bridge.step(observation.decision_id, json.dumps(action)).observation
+            while observation["kind"] == "decision":
+                encoding = request({"kind": "encode"})
+                assert len(encoding["values"]) == 33 and len(encoding["actions"]) == 321
+                action = json.loads(request({"kind": "teacher"})["response"])
+                assert action in encoding["actions"]
+                result = request(
+                    {
+                        "kind": "step",
+                        "decision_id": observation["decision_id"],
+                        "response": json.dumps(action),
+                    }
+                )
+                assert result["kind"] == "accepted" and result["action"] == action
+                observation = result["observation"]
                 decisions += 1
-            assert 1 <= decisions <= 8 * 13
-            assert sum(observation.scores.values()) == 2.0
-            print(variant, seed, decisions, observation.scores)
+            assert 1 <= decisions <= 8 * 13 and sum(observation["scores"].values()) == 2
+            print(variant, seed, decisions, "numeric decisions")
+    finally:
+        process.stdin.close()
+        process.stdout.close()
+        assert process.wait(timeout=5) == 0

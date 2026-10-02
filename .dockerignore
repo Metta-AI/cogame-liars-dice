@@ -1,0 +1,10 @@
+.git
+dist/
+bin/
+tmp/
+__pycache__/
+
+# Private training evidence must stay outside game images/public replay.
+training-corpus/
+private-trajectories/
+posttrain-output/

@@ -748,6 +748,11 @@ proc eventToJson*(event: GameEvent): JsonNode =
   if event.text.len > 0:
     result["text"] = %event.text
 
+proc publicEventJson*(event: GameEvent): JsonNode =
+  var public = event
+  public.notes = ""
+  result = public.eventToJson()
+
 proc eventFromJson*(node: JsonNode): GameEvent =
   result = GameEvent(
     kind: parseEnum[EventKind](node["kind"].getStr()),

@@ -85,9 +85,11 @@ proc encoding(game: Sim, id: int): JsonNode =
 
 when isMainModule:
   let args = commandLineParams()
-  if args.len notin 1 .. 2:
+  if args.len notin 1 .. 3:
     quit("usage: liars-dice-train-bridge MANIFEST [VARIANT]", 1)
-  let variant = if args.len == 2: args[1] else: "standard"
+  let variant = if args.len >= 2: args[1] else: "standard"
+  let language = args.len == 3 and args[2] == "--language"
+  if args.len == 3: doAssert language, "third argument must be --language"
   let manifest = parseFile(args[0])
   var variantConfig: JsonNode
   for entry in manifest["variants"]:
@@ -122,6 +124,10 @@ when isMainModule:
       doAssert not game.done
       let seat = game.currentTurn().seat
       let teacher = client.scriptedAction(game, seat)
+      if language:
+        stdout.writeLine($(%*{"response": $game.decisionAction(teacher)}))
+        stdout.flushFile()
+        continue
       var action = %*{"action": $teacher.action}
       if teacher.action == aBid:
         action["quantity"] = %teacher.quantity
@@ -129,15 +135,19 @@ when isMainModule:
       response = %*{"response": $action}
     of "step":
       doAssert not game.done and request["decision_id"].getInt() == id
-      let action = parseJson(request["response"].getStr())
+      let action = if language: extractJsonObject(request["response"].getStr())
+        else: parseJson(request["response"].getStr())
       let seat = game.currentTurn().seat
       let parsed = game.parseReply(action)
+      let canonical = if language: game.decisionAction(parsed) else: action
       if parsed.action == aBid:
         doAssert game.legalBid(parsed.quantity, parsed.face)
-        game.applyBid(seat, parsed.quantity, parsed.face)
+        game.applyBid(seat, parsed.quantity, parsed.face,
+          if language: parsed.say else: "", if language: parsed.notes else: "")
       else:
         doAssert game.bidSeat >= 0
-        game.applyChallenge(seat)
+        game.applyChallenge(seat, if language: parsed.say else: "",
+          if language: parsed.notes else: "")
       game.advance()
       inc id
       var observation: JsonNode
@@ -149,7 +159,7 @@ when isMainModule:
         observation = %*{"kind": "terminal", "scores": scores}
       else:
         observation = game.decision(id)
-      response = %*{"kind": "accepted", "action": action,
+      response = %*{"kind": "accepted", "action": canonical,
         "observation": observation}
     else:
       raise newException(ValueError, "unknown command: " & request["kind"].getStr())

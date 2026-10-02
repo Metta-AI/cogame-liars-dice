@@ -1,58 +1,64 @@
-# Metta post-training data
+# Training
 
-The native simulator and published `bayes` policy export supervised examples
-for all three certified variants:
+The authoritative game records private native Messages requests, responses,
+all retries, actual served model and platform call identifiers when
+`COGAME_SAVE_TRAJECTORY_URI` is set. Supply `COWORLD_EPISODE_ID`,
+`COWORLD_GAME_VERSION`, and `COWORLD_SOURCE_REVISION`; absent pins fail before play.
+Recording finishes before results trigger player teardown.
+
+Each accepted proposal is compared with the independently recorded engine event.
+The corpus retains every seat, consumed fallback, forced action, and complete
+participant outcome. Missing credentials, external timeouts, deadlines, and
+engine-forced actions are fallback evidence, never teacher labels.
+Public replay and live spectator events exclude private memory. Stored replay
+readers retain their existing format; archived files are not rewritten.
+
+Native calls default to explicit `COWORLD_LLM_TEMPERATURE=1`.
+Use `0` for greedy evaluation. Nonfinite or out-of-range settings fail at client
+construction. Checkpoint routes carry actual model, tokenizer, template identity,
+and draw-time tokens/log probabilities when the serving engine provides them.
+Greedy or absent probabilities remain absent and cannot qualify for policy-gradient
+training. A loopback HTTP fixture does not establish Kubernetes deployment parity.
+
+## Language and numeric bridges
 
 ```sh
 nimby sync nimby.lock
+nim c -d:release --path:src -o:/tmp/liars-dice-bridge tools/train_bridge.nim
+python3 tools/test_language_bridge.py /tmp/liars-dice-bridge
+python3 tools/test_train_bridge.py /tmp/liars-dice-bridge
+```
+
+Run the bridge with `coworld_manifest_template.json VARIANT --language` for the
+ordinary hosted prompt, JSON extraction, reply parser, private notes, and action
+execution. The `bayes` teacher uses the same acting-player view.
+The default fixed numeric action catalog is a separate research interface; its
+restricted actions omit free-text memory and do not establish language-policy parity.
+Hidden-hand permutation tests compare the teacher and prompts across every variant.
+
+## Complete private teacher corpus
+
+Commit source before export. Use a fresh destination outside this checkout.
+
+```sh
+nim c -d:release --path:src -o:/tmp/liars-dice-export tools/export_posttrain.nim
 for variant in standard poker silent; do
-  nim r -d:release --path:src tools/export_posttrain.nim \
-    "/tmp/liars-dice-$variant" 10 1 "$variant"
+  /tmp/liars-dice-export "/tmp/liars-dice-${variant}" 10 1 "$variant"
 done
 ```
 
-Each run reads its manifest variant config, adds the per-seat tokens supplied
-by the hosted platform, and plays complete seeded matches. The exporter skips
-challenges the game forces at its bid cap, since those have no player decision.
-Examples contain the hosted system and user prompts, the acting seat's own
-hand and public table, and a `bayes` action accepted by the game's reply
-parser. Parsed actions drive the simulator. Entire matches stay in one split.
-The manifest records source revision, variant, scores, wins, and row counts.
-Existing output directories are never overwritten.
+`episodes/` contains complete private decision/episode JSONL, with engine-applied
+labels and terminal outcomes. `train.jsonl` and `validation.jsonl` project accepted
+`scripted-bayes` decisions; the manifest names that target policy. Opponent and
+fallback turns remain in the underlying episodes. Seed families stay within a split.
+Files are created under umask 077, episode writes are exclusive, and existing
+outputs are refused. Private corpora are excluded from Docker and Git.
 
-Train an output with Metta post-training:
-
-```sh
-nix develop -c uv run --package metta-posttrain --extra train \
-  python -m metta_posttrain.train --dataset /tmp/liars-dice-standard \
-  --output /tmp/liars-dice-adapter --model Qwen/Qwen3-0.6B \
-  --max-steps 100 --max-length 4096
-```
-
-Ten complete matches yielded 262 training and 67 validation examples for
-standard, 254 and 57 for poker, and 262 and 67 for silent. All 969 examples
-fit a 4,096-token context with the Qwen2.5-0.5B-Instruct tokenizer (maximum:
-1,523 tokens). One CPU optimizer step per dataset with a local tiny model
-verifies the Metta post-training path. These examples distill the scripted
-teacher; they do not establish stronger league play.
-
-# Numeric reinforcement learning
-
-Compile the persistent decision bridge and pass its manifest and variant to
-Metta's `recipes.external.coworld.train` (native PufferLib) or
-`recipes.external.coworld_metta_rl.train` (Metta RL):
-
-```sh
-nim c -d:release --path:src -o:/tmp/liars-dice-train-bridge tools/train_bridge.nim
-python tools/test_train_bridge.py /tmp/liars-dice-train-bridge
-```
-
-The three certified variants have four seats, 33 numeric observation values,
-and 321 fixed action slots. The first 320 slots encode quantity 1–32 and face
-0–9; slot 320 challenges a standing bid. Illegal choices are masked. The
-bridge advances forced challenges without asking a policy and uses the
-published Bayesian baseline for opponents and teacher labels. Numeric values
-contain the acting seat's hand counts and public state. Text messages reuse
-the hosted prompts, which also include public history and previously revealed
-hands. Complete episodes produce native scores; a truncated episode is never
-scored as complete.
+Use the current [Metta post-training workflow](https://github.com/Metta-AI/metta/tree/main/packages/metta-posttrain):
+qualify the complete episodes with `coworld training qualify --policy scripted-bayes`,
+then use the SLIME workflow for training, artifact verification, and checkpoint
+reload. Runtime, training, and evaluation must use the same manifest variant,
+operator prompt, model tokenizer/template, and output/context budgets. Serving a
+learner through the sidecar requires a platform-owned authenticated route;
+players cannot choose arbitrary checkpoint URLs. Production rollout remains separate
+from local teacher/native protocol tests.

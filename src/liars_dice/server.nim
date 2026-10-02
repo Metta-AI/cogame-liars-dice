@@ -24,12 +24,14 @@
 ##                   for that seat instead of the LLM)
 
 import
-  std/[json, locks, os, sets, strutils, tables, times, unicode],
+  std/[json, options, locks, os, sets, strutils, tables, times, unicode],
   bitworld/runtime,
+  bitworld/decision_trajectory,
   curly,
   mummy,
   mummy/routers,
   llm,
+  training,
   sim
 
 const
@@ -38,6 +40,7 @@ const
 
 type
   GameState = object
+    trajectory: Option[DecisionTrajectory]
     config: GameConfig
     sim: Sim
     prompts: seq[string]
@@ -88,11 +91,12 @@ proc policyNamesJson(gs: GameState): JsonNode =
 proc snapshotJson(gs: GameState): JsonNode =
   var events = newJArray()
   for event in gs.sim.events:
-    events.add(event.eventToJson())
+    events.add(event.publicEventJson())
   var connected = newJArray()
   for slot in 0 ..< gs.config.tokens.len:
     connected.add(%gs.playerSockets.hasKey(slot))
   result = gs.sim.tableStateJson()
+  for player in result["seats"]: player["notes"] = %""
   result["type"] = %"state"
   result["game"] = %"liars-dice"
   result["policyNames"] = gs.policyNamesJson()
@@ -221,7 +225,7 @@ proc replayPayload(gs: GameState, results: JsonNode): string =
     names.add(%name)
   var events = newJArray()
   for event in gs.sim.events:
-    events.add(event.eventToJson())
+    events.add(event.publicEventJson())
   $ %*{
     "protocol": "liarsdice.replay.v" & $ReplayVersion,
     "names": names,
@@ -245,6 +249,9 @@ proc finishEpisode(runtimeConfig: RuntimeConfig) =
       return
     state.finished = true
     results = state.sim.resultsJson()
+    if state.trajectory.isSome:
+      state.trajectory.get().finishTrajectory(state.sim)
+      state.trajectory.get().writeEventsToUri(getEnv(CogameSaveTrajectoryUriEnv))
     replayData = state.replayPayload(results)
 
     ## Send final frames to players BEFORE writing artifacts: the hosted
@@ -391,7 +398,13 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
         ## seat's behalf — no model call, and the deal is bounded.
         if state.sim.mustChallenge():
           let seat = turn.seat
+          let before = state.sim
+          let forcedDecision = Decision(action: aChallenge, scripted: true,
+            fallback: true, policy: "engine-bid-cap")
           state.sim.applyChallenge(seat, scripted = true, forced = true)
+          if state.trajectory.isSome:
+            state.trajectory.get().recordAppliedDecision(before, state.sim, seat,
+              forcedDecision, state.prompts[seat], false, "engine-bid-cap")
           echo "liars-dice: ", state.sim.names[seat],
             " forced to challenge at the bid cap"
           state.broadcastLocked()
@@ -441,11 +454,13 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
           else:
             decision = client.scriptedAction(simCopy, turn.seat, "bayes")
             decision.fallback = true
+            decision.policy = "scripted-bayes"
       else:
         decision = client.decide(simCopy, turn.seat, seatPrompt,
           scripted = seatScripted, baseline = seatBaseline)
 
       var challenged = false
+      var appliedFallback = ""
       withLock stateLock:
         echo "liars-dice: deal ", state.sim.deal + 1, " ",
           decisionText(state.sim, turn.seat, decision), " at ",
@@ -460,8 +475,8 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
               decision.scripted, decision.fallback)
             challenged = true
         except LiarsDiceError as error:
-          echo "liars-dice: reply rejected (", error.msg,
-            "); using the bayes fallback"
+          echo "liars-dice: reply rejected; using the bayes fallback"
+          appliedFallback = "engine-rejection"
           let fallback = client.scriptedAction(state.sim, turn.seat, "bayes")
           if fallback.action == aBid:
             state.sim.applyBid(turn.seat, fallback.quantity, fallback.face,
@@ -470,6 +485,10 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
             state.sim.applyChallenge(turn.seat, "", "", scripted = true,
               fallback = true)
             challenged = true
+        if state.trajectory.isSome:
+          if seatScripted and not state.scripted[turn.seat]: appliedFallback = "deadline"
+          state.trajectory.get().recordAppliedDecision(simCopy, state.sim,
+            turn.seat, decision, seatPrompt, state.scripted[turn.seat], appliedFallback)
         state.broadcastLocked()
 
       ## Pace between deals: after the challenge that closes one.
@@ -611,7 +630,8 @@ proc websocketHandler(
           withLock stateLock:
             if state.external[slot] and state.awaitingSeat == slot and
                 state.awaitingEvent == payload["event"].getInt():
-              let decision = parseReply(state.sim, payload["action"])
+              var decision = parseReply(state.sim, payload["action"])
+              decision.submittedResponse = $payload["action"]
               var probe = state.sim
               if decision.action == aBid:
                 probe.applyBid(slot, decision.quantity, decision.face,
@@ -714,6 +734,10 @@ proc runGameServer*(config: GameConfig, runtimeConfig: RuntimeConfig) =
     raise newException(LiarsDiceError, "tokens and players must align")
   state.config = config
   state.sim = initSim(config)
+  if getEnv(CogameSaveTrajectoryUriEnv).len > 0:
+    state.trajectory = some(newDecisionTrajectory(getEnv("COWORLD_EPISODE_ID"),
+      "liars-dice-" & $config.seed, "liars-dice",
+      getEnv("COWORLD_GAME_VERSION"), getEnv("COWORLD_SOURCE_REVISION")))
   state.prompts = newSeq[string](config.players.len)
   state.scripted = newSeq[bool](config.players.len)
   state.baselines = newSeq[string](config.players.len)
