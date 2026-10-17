@@ -13,7 +13,7 @@ suite "player decision observation":
     var game = initSim(config)
     game.beginDeal()
     game.notes[1] = "private note of other seat"
-    let observation = game.decisionObservation(0)
+    let observation = game.decisionObservation(0, "")
     check observation["hand"] == %game.hands[0]
     check observation{"hands"}.isNil
     check "private note of other seat" notin $observation
@@ -24,7 +24,7 @@ suite "player decision observation":
     game.applyBid(actor, 1, config.lowFace())
     game.applyChallenge(game.currentTurn().seat)
     game.beginDeal()
-    let next = game.decisionObservation(0)
+    let next = game.decisionObservation(0, "")
     check next["history"].len == 1
     check next["history"][0]["hands"].len == 4
     check next["hand"] == %game.hands[0]

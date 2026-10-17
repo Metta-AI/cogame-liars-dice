@@ -20,7 +20,7 @@ import
   bitworld/runtime,
   bitworld/decision_trajectory,
   curly,
-  sim
+  sim, prompts
 
 const
   AnthropicUrl = "https://api.anthropic.com/v1/messages"
@@ -295,6 +295,8 @@ proc symbolWord(sim: Sim): string =
   if sim.config.mode == mPoker: "digits" else: "dice"
 
 proc systemPrompt*(sim: Sim, seat: int): string =
+  if sim.config.selectedPromptVariant != pvCanonical:
+    return renderVariantPrompt(sim, seat)
   let total = sim.totalSymbols()
   let dice = sim.config.mode == mDice
   result.add("You are " & sim.names[seat] &

@@ -3,7 +3,7 @@
 ## liars-dice-train-bridge coworld_manifest_template.json [standard|poker|silent]
 
 import std/[json, os]
-import liars_dice/[llm, sim]
+import liars_dice/[llm, sim, prompts]
 
 const
   OperatorPrompt = "Play to maximize your score using only your own hand and the public table."
@@ -29,10 +29,13 @@ proc advance(game: var Sim) =
 
 proc decision(game: Sim, id: int): JsonNode =
   let seat = game.currentTurn().seat
+  let system = systemPrompt(game, seat)
+  let user = userPrompt(game, seat, OperatorPrompt)
   var hand = newJArray()
   for face in 0 .. MaxFace:
     hand.add(%game.ownCount(seat, face))
   let view = %*{
+    "prompt_template": promptMetadata(game.config, system, user),
     "seat": seat, "table_position": game.seatAt[seat],
     "mode": $game.config.mode, "hand": hand,
     "deal": game.deal, "deals": game.config.deals,
@@ -46,8 +49,8 @@ proc decision(game: Sim, id: int): JsonNode =
     "seat": seat, "engine_seat": seat, "turn": id,
     "semantic_view": view, "inbox": [],
     "messages": [
-      {"role": "system", "content": systemPrompt(game, seat)},
-      {"role": "user", "content": userPrompt(game, seat, OperatorPrompt)}
+      {"role": "system", "content": system},
+      {"role": "user", "content": user}
     ],
     "speech_messages": [],
     "action_schema": {"type": "object", "required": ["action"]},
@@ -109,7 +112,11 @@ when isMainModule:
       let runtimeConfig = copy(variantConfig)
       runtimeConfig["tokens"] = %*["t0", "t1", "t2", "t3"]
       runtimeConfig["seed"] = %seedOf(request["seed"].getStr())
+      for key in ["promptVariant", "promptSeed"]:
+        if request.hasKey(key): runtimeConfig[key] = request[key]
       config.update($runtimeConfig)
+      doAssert config.selectedPromptVariant notin {pvHeldoutBriefing, pvHeldoutReference},
+        "held-out wording is evaluation-only and cannot enter the training bridge"
       config = sampleEpisode(config)
       doAssert config.players.len == 4 and config.handSize * 4 <= MaxQuantity
       game = initSim(config)

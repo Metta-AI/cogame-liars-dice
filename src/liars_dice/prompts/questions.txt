@@ -1,0 +1,9 @@
+You play as $1 at a Liar's Dice table with $2 other cogs.
+
+What can you see? $3
+What does a bid assert? $4
+What can you do? Raise the standing bid or challenge it. The opener of a deal must bid. A raise must use a greater quantity, or the same quantity with a greater face.
+What does challenging do? Every hand is revealed. If the real count is at least the bid quantity, the bidder wins +1 and the challenger loses -1. If the count is lower, the challenger wins +1 and the bidder loses -1. No other cog scores. The deal ends and a fresh deal begins.
+How is your score computed? It is 0.5 + (your wins - your losses) / (2 x deals), with 0.5 meaning break even. Bluffing is legal and expected; getting caught and challenging a true bid are the ways to lose.
+Who sees your notes? Only you; they are supplied to you every turn.
+$5

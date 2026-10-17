@@ -26,6 +26,10 @@
       "source_url": "https://github.com/Metta-AI/cogame-liars-dice/tree/main"
     },
     "config_schema": {
+      "allOf": [{
+        "if": {"properties": {"promptVariant": {"const": "mixed"}}, "required": ["promptVariant"]},
+        "then": {"required": ["promptSeed"]}
+      }],
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "additionalProperties": false,
@@ -68,6 +72,18 @@
           "type": "integer",
           "minimum": 4,
           "maximum": 4
+        },
+        "promptVariant": {
+          "type": "string",
+          "enum": ["canonical", "plain", "numbered", "questions", "reordered", "heldout-briefing", "heldout-reference", "mixed"],
+          "default": "canonical",
+          "description": "Episode-stable rule wording. Mixed selects one of the five training templates using promptSeed; heldout templates are evaluation-only."
+        },
+        "promptSeed": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Independent wording seed, required explicitly with mixed selection; never changes the deal RNG."
         },
         "seed": {
           "description": "Pins the seating permutation, the seat aliases, every deal's hands, and the scripted baselines' tie-breaks. Omit for a fresh random seed per episode.",
