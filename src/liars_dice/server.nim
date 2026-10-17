@@ -31,6 +31,7 @@ import
   mummy,
   mummy/routers,
   llm,
+  prompts,
   training,
   sim
 
@@ -130,9 +131,11 @@ proc playerStateJson(gs: GameState, slot: int): JsonNode =
     "reason": gs.sim.reason
   }
 
-proc decisionObservation*(sim: Sim, slot: int): JsonNode =
+proc decisionObservation*(sim: Sim, slot: int, operatorPrompt: string): JsonNode =
   ## One seat's normal decision view. Current hands and private notes of
   ## other seats never enter this frame; prior revealed hands are public.
+  let system = systemPrompt(sim, slot)
+  let user = userPrompt(sim, slot, operatorPrompt)
   var names = newJArray()
   var standings = newJArray()
   for index, name in sim.names:
@@ -165,6 +168,8 @@ proc decisionObservation*(sim: Sim, slot: int): JsonNode =
       if sim.legalBid(quantity, face):
         legalBids.add(%*{"quantity": quantity, "face": face})
   %*{"slot": slot, "name": sim.names[slot], "names": names,
+    "input": {"system": system, "user": user},
+    "prompt_template": promptMetadata(sim.config, system, user),
     "mode": $sim.config.mode, "talk": sim.config.talk,
     "deal": sim.deal, "deals": sim.config.deals,
     "hand": sim.hands[slot], "handSize": sim.config.handSize,
@@ -215,6 +220,8 @@ proc replayConfigJson(gs: GameState): JsonNode =
     "talk": gs.config.talk,
     "maxBidsPerDeal": gs.config.maxBidsPerDeal,
     "seed": gs.config.seed,
+    "promptVariant": $gs.config.promptVariant,
+    "promptSeed": gs.config.promptSeed,
     "sampled": true,
     "order": order
   }
@@ -433,7 +440,7 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
           state.hasPendingAction = false
           state.playerSockets[turn.seat].send($ %*{
             "type": "observation", "event": state.awaitingEvent,
-            "observation": state.sim.decisionObservation(turn.seat)})
+            "observation": state.sim.decisionObservation(turn.seat, seatPrompt)})
 
       ## The slow part (Claude) runs outside the lock on a snapshot; only
       ## this thread mutates the sim, so the snapshot cannot go stale.

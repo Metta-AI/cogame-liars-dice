@@ -1,0 +1,9 @@
+Liar's Dice instructions for $1. There are $2 other cogs at your table.
+
+1. Private information. $3
+2. Meaning of a bid. $4
+3. Taking a turn. Choose a raise or a challenge of the standing bid. A deal's opening player must bid. A raise increases the quantity, or uses the same quantity with a higher face.
+4. Resolving a challenge. Reveal all hands and count the bid's face. A count at least as large as the claimed quantity makes the bid true: +1 to its bidder, -1 to its challenger. A smaller count makes it false: +1 to the challenger, -1 to the bidder. Nobody else scores. End the deal and deal fresh hands.
+5. Scoring and bluffing. Your score equals 0.5 + (your wins - your losses) / (2 x deals); 0.5 is break even. Bluffing is legal and expected. You lose when your bluff is caught or you challenge a true bid.
+6. Notes. Your notes are private and are returned to you each turn.
+$5

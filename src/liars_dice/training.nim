@@ -1,7 +1,7 @@
 ## Private authoritative decisions, separate from spectator artifacts.
 import std/[json, options]
 import bitworld/decision_trajectory
-import llm, sim
+import llm, sim, prompts
 
 proc recordAppliedDecision*(trajectory: DecisionTrajectory, before, after: Sim,
     seat: int, proposed: Decision, operatorPrompt: string,
@@ -38,8 +38,10 @@ proc recordAppliedDecision*(trajectory: DecisionTrajectory, before, after: Sim,
         attempts[index].rejectionReason = some(if fallbackReason.len > 0: fallbackReason else: "consumed fallback")
       else:
         selected = some(attempts[index].attemptId)
-  let observation = %*{"seat": seat, "system": systemPrompt(before, seat),
-    "user": userPrompt(before, seat, operatorPrompt)}
+  let system = systemPrompt(before, seat)
+  let user = userPrompt(before, seat, operatorPrompt)
+  let observation = %*{"seat": seat, "system": system, "user": user,
+    "prompt_template": promptMetadata(before.config, system, user)}
   trajectory.recordDecision("event-" & $before.events.len, $seat,
     observation, attempts, selected, applied,
     if fallback: asFallback else: asAccepted, terminal = after.done,

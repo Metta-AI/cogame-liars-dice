@@ -54,3 +54,8 @@ for variant in variants:
         process.stdin.close()
         process.stdout.close()
         assert process.wait(timeout=5) == 0
+
+subprocess.run(
+    [sys.executable, str(Path(__file__).with_name("test_prompt_variants.py")), str(binary)],
+    check=True,
+)

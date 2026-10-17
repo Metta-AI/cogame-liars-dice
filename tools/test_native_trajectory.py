@@ -233,3 +233,8 @@ for mode in ["accepted", "retry", "fallback", "greedy", "refusal", "sampled"]:
     )
 (root / "report.json").write_text(json.dumps(reports, indent=2) + "\n")
 print(json.dumps(reports))
+subprocess.run(
+    [sys.executable, str(Path(__file__).with_name("test_prompt_socket_games.py")), binary,
+     str(root / "prompt-variants"), revision],
+    check=True,
+)

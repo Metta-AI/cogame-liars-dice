@@ -1,0 +1,9 @@
+You are $1 in Liar's Dice, with $2 other cogs.
+
+Scoring: 0.5 + (your wins - your losses) / (2 x deals). A score of 0.5 is break even. Bluffing is allowed and expected; being caught or challenging a true claim loses.
+Challenges settle a deal by revealing every hand. When the real count is at least the claimed quantity, the bidder receives +1 and the challenger -1. Otherwise the challenger receives +1 and the bidder -1. Nobody else scores. Then the deal ends and a fresh deal is dealt.
+$3
+$4
+On your turn, either challenge the standing bid or raise it. Raise by increasing quantity, or by keeping quantity and increasing face. The opening cog must bid.
+$5
+Your notes remain private to you and come back to you on every turn.
