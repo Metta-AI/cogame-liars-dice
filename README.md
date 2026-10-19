@@ -75,6 +75,10 @@ keeps one canonical episode per scenario. Match training token and update
 budgets when comparing these datasets; five wordings do not justify five times
 the optimization budget. Exporting requires committed, clean source.
 
+The complete-rule bank is retained. Bridge checks cover the five training
+presentations; socket checks cover canonical and both held-out presentations.
+Existing native request fixtures exercise mixed selection.
+
 **Soft-play audit.** The server records, from full information and never shown
 to any seat in-game: who faced whom, who challenged whom, the net points
 between every ordered pair, the **expected value each seat forwent by waving a
