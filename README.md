@@ -201,3 +201,7 @@ Or field a scripted baseline: the same image with
 
 Any policy can register as an external player, read the private seat
 observation, and submit the documented bid or challenge action.
+
+Exported episode IDs contain selected wording and prompt seed, distinguishing
+collections with different prompt seeds even when they resolve to the same wording.
+Gameplay seed families still group those matched episodes together.

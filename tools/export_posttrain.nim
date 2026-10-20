@@ -50,7 +50,7 @@ when isMainModule:
     config = sampleEpisode(config)
     var sim = initSim(config)
     let episode = "liars-dice-" & variant & "-" & $seed &
-      (if mixed: "-" & $config.selectedPromptVariant else: "")
+      "-" & $config.selectedPromptVariant & "-" & $config.promptSeed
     let seedFamily = "liars-dice-" & $seed
     let trajectory = newDecisionTrajectory(episode, seedFamily, "liars-dice",
       sourceRevision, sourceRevision)

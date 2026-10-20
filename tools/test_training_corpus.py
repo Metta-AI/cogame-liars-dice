@@ -31,6 +31,9 @@ assert not split_episodes[0] & split_episodes[1]
 assert not split_families[0] & split_families[1]
 wordings = {}
 for run in manifest["runs"]:
+    assert run["episode_id"].endswith(
+        "-" + run["prompt_variant"] + "-" + str(run["prompt_seed"])
+    )
     wordings.setdefault(run["seed"], set()).add(run["prompt_variant"])
     events = [
         json.loads(line) for line in (root / run["trajectory"]).read_text().splitlines()
@@ -49,9 +52,18 @@ for run in manifest["runs"]:
         metadata = observation["prompt_template"]
         assert metadata["variant"] == run["prompt_variant"]
         assert metadata["seed"] == run["prompt_seed"]
-        assert metadata["variant"] in {"canonical", "plain", "numbered", "questions", "reordered"}
+        assert metadata["variant"] in {
+            "canonical",
+            "plain",
+            "numbered",
+            "questions",
+            "reordered",
+        }
         for role in ("system", "user"):
-            assert metadata[role + "_sha256"].lower() == hashlib.sha256(observation[role].encode()).hexdigest()
+            assert (
+                metadata[role + "_sha256"].lower()
+                == hashlib.sha256(observation[role].encode()).hexdigest()
+            )
         if decision["action_status"] == "fallback":
             assert (
                 decision["selected_attempt_id"] is None and decision["fallback_origin"]
@@ -89,5 +101,8 @@ for run in manifest["runs"]:
         label_count += 1
     assert label_count == run["labels"] and actual_labels == run["label_ids"]
 assert not labels
-assert all(len(variants) == manifest["prompt_selection"]["templates_per_seed"] for variants in wordings.values())
+assert all(
+    len(variants) == manifest["prompt_selection"]["templates_per_seed"]
+    for variants in wordings.values()
+)
 print(manifest["variant"], len(manifest["runs"]), "complete private episodes passed")
