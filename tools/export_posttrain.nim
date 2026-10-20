@@ -8,13 +8,17 @@ const Variants = ["standard", "poker", "silent"]
 
 when isMainModule:
   let args = commandLineParams()
-  if args.len notin 2 .. 4:
-    quit("usage: export_posttrain OUTPUT MATCHES [FIRST_SEED] [VARIANT]", 1)
+  if args.len notin 2 .. 5:
+    quit("usage: export_posttrain OUTPUT MATCHES [FIRST_SEED] [VARIANT] [FIRST_PROMPT_SEED]", 1)
   let output = args[0]
   let matches = parseInt(args[1])
   let firstSeed = if args.len >= 3: parseInt(args[2]) else: 1
-  let variant = if args.len == 4: args[3] else: Variants[0]
+  let variant = if args.len >= 4: args[3] else: Variants[0]
+  let mixed = args.len == 5
+  let firstPromptSeed = if mixed: parseInt(args[4]) else: 0
+  let wordings = if mixed: 5 else: 1
   doAssert matches >= 10 and firstSeed >= 1
+  doAssert firstPromptSeed >= 0
   doAssert variant in Variants
   doAssert not dirExists(output) and not fileExists(output)
   doAssert execProcess("git status --porcelain").strip().len == 0, "commit source before exporting"
@@ -28,7 +32,8 @@ when isMainModule:
   doAssert not variantConfig.isNil
   var trainRows, validationRows: seq[string]
   var runs = newJArray()
-  for seed in firstSeed ..< firstSeed + matches:
+  for index in 0 ..< matches * wordings:
+    let seed = firstSeed + index div wordings
     var config = defaultGameConfig()
     let runtimeConfig = copy(variantConfig)
     runtimeConfig["tokens"] = newJArray()
@@ -36,10 +41,16 @@ when isMainModule:
       runtimeConfig["tokens"].add(%("t" & $seat))
     runtimeConfig["seed"] = %seed
     runtimeConfig["turnDelayMs"] = %0
+    if mixed:
+      runtimeConfig["promptVariant"] = %"mixed"
+      runtimeConfig["promptSeed"] = %(firstPromptSeed + index mod wordings)
     config.update($runtimeConfig)
+    doAssert config.selectedPromptVariant notin {pvHeldoutBriefing, pvHeldoutReference},
+      "held-out wording cannot enter a teacher corpus"
     config = sampleEpisode(config)
     var sim = initSim(config)
-    let episode = "liars-dice-" & variant & "-" & $seed
+    let episode = "liars-dice-" & variant & "-" & $seed &
+      "-" & $config.promptVariant & "-" & $config.selectedPromptVariant & "-" & $config.promptSeed
     let seedFamily = "liars-dice-" & $seed
     let trajectory = newDecisionTrajectory(episode, seedFamily, "liars-dice",
       sourceRevision, sourceRevision)
@@ -94,6 +105,7 @@ when isMainModule:
     if seed mod 5 == 0: validationRows.add(rows)
     else: trainRows.add(rows)
     runs.add(%*{"episode_id": episode, "seed": seed, "labels": rows.len,
+      "prompt_variant": $config.selectedPromptVariant, "prompt_seed": config.promptSeed,
       "trajectory": "episodes/" & episode & ".jsonl", "label_ids": labelIds, "outcome": sim.resultsJson()})
   writeFile(output / "train.jsonl", trainRows.join("\n") & "\n")
   writeFile(output / "validation.jsonl", validationRows.join("\n") & "\n")
@@ -101,6 +113,8 @@ when isMainModule:
     "schema_version": 2, "format": "coworld-private-teacher-corpus-v1",
     "game": "liars-dice", "variant": variant, "source_revision": sourceRevision,
     "selection": {"policy": "scripted-bayes", "seats": "all"},
+    "prompt_selection": {"variant": (if mixed: "mixed" else: "canonical"),
+      "first_prompt_seed": firstPromptSeed, "templates_per_seed": wordings},
     "operator_prompt": OperatorPrompt, "train_examples": trainRows.len,
     "validation_examples": validationRows.len, "runs": runs
   }) & "\n")

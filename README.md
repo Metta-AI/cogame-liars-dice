@@ -44,6 +44,41 @@ score is always 0.5. The episode ends `complete` after `deals` deals (default
 *liars_poker* variant, bidding on the digits of four hidden eight-digit serial
 numbers instead of dice faces — and `silent` (no table talk).
 
+**Rule wording.** `promptVariant` defaults to `canonical`, preserving the original
+system text. `plain`, `numbered`, `questions`, and `reordered` are training
+paraphrases. `heldout-briefing` and `heldout-reference` are evaluation-only.
+`mixed` selects one of the five training templates using `promptSeed % 5`;
+provide an explicit nonnegative `promptSeed` with this selection. Selection is
+stable across all seats and deals and does not consume the game RNG.
+
+Private observations include the `liars-dice-rules-v1` bank, selection, seed,
+selected template, and SHA-256 hashes of the exact system and user messages.
+External players receive those messages in `observation.input`. Operator
+guidance, hands, legal actions, scoring, notes, and output format retain their
+existing roles. Replays retain the selection configuration for reproduction.
+
+The language training bridge accepts `promptVariant` and `promptSeed` on each
+`reset` and returns provenance inside `semantic_view.prompt_template`. It
+rejects held-out wording. Keep every wording of the same game seed in one data
+partition; generate responses under the selected wording instead of relabeling
+old responses. Compare canonical and mixed training against matched seeds,
+seats, opponents, and inference budgets, reserving held-out wording for final
+evaluation. Report failures with scores. Mechanical checks do not demonstrate
+better model play or prevention of training collapse.
+
+For native scripted-teacher data, the exporter accepts a final prompt-seed
+argument: `export_posttrain OUTPUT MATCHES FIRST_SEED VARIANT FIRST_PROMPT_SEED`.
+It plays each scenario five times, once per training template. All five stay
+in the same train/validation partition. This avoids correlating template
+selection with the exporter's seed-based partition. Omitting the final argument
+keeps one canonical episode per scenario. Match training token and update
+budgets when comparing these datasets; five wordings do not justify five times
+the optimization budget. Exporting requires committed, clean source.
+
+The complete-rule bank is retained. Bridge checks cover the five training
+presentations; socket checks cover canonical and both held-out presentations.
+Existing native request fixtures exercise mixed selection.
+
 **Soft-play audit.** The server records, from full information and never shown
 to any seat in-game: who faced whom, who challenged whom, the net points
 between every ordered pair, the **expected value each seat forwent by waving a
@@ -166,3 +201,7 @@ Or field a scripted baseline: the same image with
 
 Any policy can register as an external player, read the private seat
 observation, and submit the documented bid or challenge action.
+
+Exported episode IDs contain selected wording and prompt seed, distinguishing
+collections with different prompt seeds even when they resolve to the same wording.
+Gameplay seed families still group those matched episodes together.

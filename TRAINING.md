@@ -54,11 +54,14 @@ fallback turns remain in the underlying episodes. Seed families stay within a sp
 Files are created under umask 077, episode writes are exclusive, and existing
 outputs are refused. Private corpora are excluded from Docker and Git.
 
-Use the current [Metta post-training workflow](https://github.com/Metta-AI/metta/tree/main/packages/metta-posttrain):
-qualify the complete episodes with `coworld training qualify --policy scripted-bayes`,
-then use the SLIME workflow for training, artifact verification, and checkpoint
-reload. Runtime, training, and evaluation must use the same manifest variant,
+Use the [post-training research package](https://github.com/Metta-AI/posttraining-research/tree/main/packages/metta-posttraining)
+to import and independently review complete episodes, then split by seed family
+before exporting selected training examples. Runtime, training, and evaluation must use the same manifest variant,
 operator prompt, model tokenizer/template, and output/context budgets. Serving a
 learner through the sidecar requires a platform-owned authenticated route;
 players cannot choose arbitrary checkpoint URLs. Production rollout remains separate
 from local teacher/native protocol tests.
+
+Episode IDs and trajectory filenames include requested selection, resolved wording,
+and prompt seed, distinguishing explicit and mixed collections with identical text.
+Scenario-family grouping remains unchanged.

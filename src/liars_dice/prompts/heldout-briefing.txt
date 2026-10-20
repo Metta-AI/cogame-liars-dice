@@ -1,0 +1,10 @@
+Table briefing: $1 plays Liar's Dice against $2 other cogs.
+
+$3
+$4
+
+On your turn your choices are to raise the standing bid or challenge it; the deal's opener must bid. A greater quantity is a raise, as is an equal quantity paired with a greater face.
+To settle a challenge, reveal all hands. The bidder earns +1 and the challenger -1 if the counted face appears at least as many times as claimed. If it appears fewer times, reverse those awards: +1 for the challenger, -1 for the bidder. Other cogs score nothing. Close the deal and deal again.
+Convert your wins and losses to a score using 0.5 + (your wins - your losses) / (2 x deals). Break even is 0.5. Bluffing is legal and expected, but a caught bluff loses, as does challenging a bid that is true.
+$5
+Keep notes for yourself: no other cog sees them, and you receive them each turn.

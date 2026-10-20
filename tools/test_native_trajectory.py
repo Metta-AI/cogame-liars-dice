@@ -93,6 +93,8 @@ for mode in ["accepted", "retry", "fallback", "greedy", "refusal", "sampled"]:
     port = listener.getsockname()[1]
     listener.close()
     config = {
+        "promptVariant": "mixed",
+        "promptSeed": 4,
         "seed": 17,
         "num_agents": 4,
         "llmTimeoutSeconds": 1,
@@ -233,3 +235,13 @@ for mode in ["accepted", "retry", "fallback", "greedy", "refusal", "sampled"]:
     )
 (root / "report.json").write_text(json.dumps(reports, indent=2) + "\n")
 print(json.dumps(reports))
+subprocess.run(
+    [
+        sys.executable,
+        str(Path(__file__).with_name("test_prompt_socket_games.py")),
+        binary,
+        str(root / "prompt-variants"),
+        revision,
+    ],
+    check=True,
+)

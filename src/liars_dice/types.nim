@@ -10,10 +10,22 @@ type
     mDice = "dice"    ## faces 1..6, five dice per seat
     mPoker = "poker"  ## digits 0..9, an eight-digit serial per seat
 
+  PromptVariant* = enum
+    pvCanonical = "canonical"
+    pvPlain = "plain"
+    pvNumbered = "numbered"
+    pvQuestions = "questions"
+    pvReordered = "reordered"
+    pvHeldoutBriefing = "heldout-briefing"
+    pvHeldoutReference = "heldout-reference"
+    pvMixed = "mixed"
+
   GameConfig* = object
     tokens*: seq[string]
     players*: seq[PlayerConfig]
     seed*: int
+    promptVariant*: PromptVariant
+    promptSeed*: int
     mode*: Mode
     handSize*: int        ## symbols dealt to every seat each deal
     deals*: int           ## independent deals in the episode
@@ -75,6 +87,10 @@ proc parseMode*(text: string): Mode =
   of "poker": mPoker
   else: raise newException(LiarsDiceError, "mode must be dice or poker: " & text)
 
+proc selectedPromptVariant*(config: GameConfig): PromptVariant =
+  if config.promptVariant == pvMixed: PromptVariant(config.promptSeed mod 5)
+  else: config.promptVariant
+
 proc update*(config: var GameConfig, configJson: string) =
   ## Applies a runtime JSON config on top of the defaults.
   if configJson.strip().len == 0:
@@ -92,6 +108,16 @@ proc update*(config: var GameConfig, configJson: string) =
       config.players.add(PlayerConfig(name: player["name"].getStr()))
   if node.hasKey("seed"):
     config.seed = node["seed"].getInt()
+  if node.hasKey("promptVariant"):
+    config.promptVariant = parseEnum[PromptVariant](node["promptVariant"].getStr())
+  if node.hasKey("promptSeed"):
+    if node["promptSeed"].kind != JInt:
+      raise newException(LiarsDiceError, "promptSeed must be an integer")
+    config.promptSeed = node["promptSeed"].getInt()
+  if config.promptSeed < 0:
+    raise newException(LiarsDiceError, "promptSeed must be nonnegative")
+  if config.promptVariant == pvMixed and not node.hasKey("promptSeed"):
+    raise newException(LiarsDiceError, "mixed wording requires an explicit promptSeed")
   if node.hasKey("mode"):
     config.mode = parseMode(node["mode"].getStr())
   if node.hasKey("handSize"):

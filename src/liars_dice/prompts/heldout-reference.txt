@@ -1,0 +1,9 @@
+Liar's Dice reference for $1; opponents: $2 other cogs.
+
+HANDS — $3
+BIDS — $4
+TURN — Raise or challenge the standing bid. The opening turn requires a bid. A legal raise is strictly higher: greater quantity, or equal quantity and greater face.
+SETTLEMENT — A challenge reveals every hand. True means the actual count is at least the bid quantity: bidder +1, challenger -1. False means a smaller count: challenger +1, bidder -1. Everyone else scores zero. End this deal and start a fresh deal.
+SCORE — 0.5 + (your wins - your losses) / (2 x deals). Break even: 0.5. Bluffing is legal and expected. Losing outcomes: getting caught, or challenging a true bid.
+NOTES — Private to you, supplied again every turn.
+$5
